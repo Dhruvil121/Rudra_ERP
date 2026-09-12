@@ -4,11 +4,16 @@ import Dashboard from "../pages/Dashboard";
 import Products from "../pages/Products";
 import Orders from "../pages/Orders";
 import Customers from "../pages/Customers";
+import { AppLayout } from "../layout/AppLayout";
+import InventoryModule from "../pages/Inventory";
+import ProcessModule from "../pages/Process";
+import AssemblingModule from "../pages/Assembling";
+import ReportsModule from "../pages/Reports";
 
 const router = createBrowserRouter([
     {
         path: "/",
-        element: <MainLayout />,
+        element: <AppLayout />,
         children: [
             {
                 index: true,
@@ -25,6 +30,22 @@ const router = createBrowserRouter([
             {
                 path: "/customers",
                 element: <Customers />
+            },
+            {
+                path: "/inventory",
+                element: <InventoryModule />
+            },
+            {
+                path: "/process",
+                element: <ProcessModule />
+            },
+            {
+                path: "/assembling",
+                element: <AssemblingModule />
+            },
+            {
+                path: "/reports",
+                element: <ReportsModule />
             }
         ]
     }

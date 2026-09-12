@@ -1,39 +1,19 @@
-import PageTop from "../components/PageTop"
+import { ERP_MODULES } from '../config/modules';
+import { ModuleCard } from '../components/dashboard/ModuleCard';
 
-const Dashboard = () => {
+export default function Dashboard() {
+    const visibleModules = ERP_MODULES;
+
     return (
-        <div>
-            <PageTop title="Dashboard" />
-            <div>
-                <div>
-                    <p>Total Revenue</p>
-                    <h2>$0.00</h2>
-                </div>
-                <div>
-                    <p>Total Orders</p>
-                    <h2>0</h2>
-                </div>
-                <div>
-                    <p>Total Customers</p>
-                    <h2>0</h2>
-                </div>
-                <div>
-                    <p>Total Products</p>
-                    <h2>0</h2>
-                </div>
-            </div>
-            <div>
-                <div>
-                    <h2>Recent Orders</h2>
-                    <p></p>
-                    <button>View All</button>
-                </div>
-                <div>
-
+        <div className="min-h-screen bg-[#f3f4f6] flex items-center justify-center p-8">
+            {/* max-w-[650px] forces a clean 2x2 grid for your 4 modules */}
+            <div className="max-w-[650px] w-full">
+                <div className="flex flex-wrap justify-center gap-6">
+                    {visibleModules.map((module) => (
+                        <ModuleCard key={module.id} module={module} />
+                    ))}
                 </div>
             </div>
         </div>
-    )
+    );
 }
-
-export default Dashboard
