@@ -1,20 +1,24 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Menu, X, LayoutDashboard } from 'lucide-react';
+import { useAuth, ACTIONS } from '../context/AuthContext';
 import { ERP_MODULES } from '../config/modules';
 
 export function AppLayout() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const location = useLocation();
+    const { hasPermission, user, logout } = useAuth();
 
     // Automatically close the mobile sidebar when a navigation item is clicked
     useEffect(() => {
         setIsMobileOpen(false);
     }, [location.pathname]);
 
+    const permittedModules = ERP_MODULES.filter(module => hasPermission(module.id, ACTIONS.VIEW));
+
     const navItems = [
         { id: 'dashboard', title: 'Dashboard', path: '/', icon: LayoutDashboard },
-        ...ERP_MODULES
+        ...permittedModules
     ];
 
     // Dynamically determine the page title based on the current route
@@ -79,14 +83,23 @@ export function AppLayout() {
                         <h1 className="text-xl font-bold text-slate-800">{currentTitle}</h1>
                     </div>
 
-                    {/* Future User Profile / Logout Dropdown can go here */}
-                    <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm">
-                        AD
+                    {/* User Profile & Logout */}
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm">
+                            {user?.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'U'}
+                        </div>
+                        <span className="text-sm font-medium text-slate-600 hidden md:block">{user?.name}</span>
+                        <button
+                            onClick={() => { logout(); window.location.href = '/login'; }}
+                            className="text-xs px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-md font-medium transition-colors"
+                        >
+                            Logout
+                        </button>
                     </div>
                 </header>
 
                 {/* Dynamic Page Content injected by React Router */}
-                <main className="p-4 md:p-8 flex-1 overflow-x-hidden">
+                <main className="p-4 md:p-8 flex-1 overflow-x-hidden flex flex-col">
                     <Outlet />
                 </main>
             </div>

@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String
+  name        String
+  role        String   @default("manager") // 'super_admin' or 'manager'
+  permissions Json     // Stores module-specific actions: { "customer": ["view", "edit"], "process": ["process_turning"] }
+  createdAt   DateTime @default(now())
+}
+
+model Customer {
+  id           String   @id @default(cuid())
+  firmName     String
+  brandName    String?
+  personalName String?
+  mobileNo     String
+  email        String?
+  gstNo        String?
+  address      String?
+  city         String?
+  state        String?
+  group        String
+  status       String   @default("Active")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ProcessBatch {
+  id                  String   @id @default(cuid())
+  batchNo             String   @unique
+  rawMaterial         String
+  turningWeightBefore Float?
+  turningWeightAfter  Float?
+  buffingType         String?
+  platingType         String?
+  status              String   @default("pending") // pending, approved_turning, approved_buffing, completed
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
