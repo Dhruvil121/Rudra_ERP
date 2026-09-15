@@ -5,7 +5,7 @@
  * - Provides a consistent error handling pattern
  */
 
-const API_BASE = '/api';
+const API_BASE = 'https://rudra-erp-backend.onrender.com/api';
 
 /**
  * Core fetch wrapper
