@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import api from '../services/api/apiClient';
 
 // Define action-level permissions as requested
 export const ACTIONS = {
@@ -39,17 +40,7 @@ export function AuthProvider({ children }) {
     }, []);
 
     const login = async (email, password) => {
-        const response = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.error || 'Login failed');
-        }
+        const data = await api.post('/auth/login', { email, password });
 
         // Persist the token and user data
         localStorage.setItem('rudra_token', data.token);
