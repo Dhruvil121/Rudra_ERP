@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SubModuleLayout } from '../layout/SubModuleLayout';
 import { FormInput } from '../components/forms/FormInputs';
-import { useOrderSearch } from '../hooks/useOrderData';
+import { useOrderSearch, useCreateOrder } from '../hooks/useOrderData';
 import { Search, Loader2, Plus, Trash2 } from 'lucide-react';
 
 const INITIAL_ITEM = { id: '', rudraCode: '', partyCode: '', finishing: '', color: '', hsnSac: '', size: '', qty: '' };
@@ -21,8 +21,10 @@ export default function OrderModule() {
     const [formData, setFormData] = useState(INITIAL_FORM_STATE);
     const [searchCode, setSearchCode] = useState('');
     const [triggerSearch, setTriggerSearch] = useState(false);
+    const [saveMessage, setSaveMessage] = useState('');
 
     const { data: orderData, isLoading, isError, error } = useOrderSearch(searchCode, triggerSearch);
+    const createOrder = useCreateOrder();
 
     // Auto-populate form on successful fetch
     useEffect(() => {
@@ -60,16 +62,26 @@ export default function OrderModule() {
     };
 
     const removeItemRow = (id) => {
-        if (formData.items.length === 1) return; // Keep at least one row
+        if (formData.items.length === 1) return;
         setFormData((prev) => ({
             ...prev,
             items: prev.items.filter((item) => item.id !== id),
         }));
     };
 
-    const handleSave = (e) => {
+    const handleSave = async (e) => {
         e.preventDefault();
-        console.log('Saving PI payload:', { code: searchCode, ...formData });
+        setSaveMessage('');
+        try {
+            // Clean up items — remove the client-side 'id' field
+            const cleanItems = formData.items.map(({ id, ...rest }) => rest);
+            await createOrder.mutateAsync({ code: searchCode, ...formData, items: cleanItems });
+            setSaveMessage('Order saved successfully!');
+            setFormData(INITIAL_FORM_STATE);
+            setSearchCode('');
+        } catch (err) {
+            setSaveMessage('Error: ' + err.message);
+        }
     };
 
     return (

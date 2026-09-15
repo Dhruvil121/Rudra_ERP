@@ -1,24 +1,29 @@
-import { mockCustomers } from '../../mocks/customerData';
+import api from './apiClient';
 
 /**
- * Simulates fetching customer details by their unique code.
- * @param {string} code 
- * @returns {Promise<Object>}
+ * Fetch all customers from the backend.
  */
-export const getCustomerByCode = async (code) => {
-    return new Promise((resolve, reject) => {
-        // Simulate an 800ms network delay to trigger UI loading states
-        setTimeout(() => {
-            // Normalize the input so 'cust101' and 'CUST101' both work
-            const normalizedCode = code.trim().toUpperCase();
-            const customer = mockCustomers[normalizedCode];
+export const getCustomers = async () => {
+    return api.get('/customers');
+};
 
-            if (customer) {
-                resolve(customer);
-            } else {
-                // Simulating a 404 Not Found response
-                reject(new Error('Invalid Code: No customer found with this ID.'));
-            }
-        }, 800);
-    });
+/**
+ * Create a new customer in the database.
+ */
+export const createCustomer = async (customerData) => {
+    return api.post('/customers', customerData);
+};
+
+/**
+ * Update an existing customer by ID.
+ */
+export const updateCustomer = async ({ id, ...customerData }) => {
+    return api.put(`/customers/${id}`, customerData);
+};
+
+/**
+ * Delete a customer by ID.
+ */
+export const deleteCustomer = async (id) => {
+    return api.delete(`/customers/${id}`);
 };
