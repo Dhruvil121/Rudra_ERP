@@ -1,23 +1,27 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getOrderByCode, createOrder } from '../services/api/orderApi';
 
-export const useOrderSearch = (code, shouldSearch) => {
-    return useQuery({
-        queryKey: ['order', code],
-        queryFn: () => getOrderByCode(code),
-        enabled: shouldSearch && !!code,
-        retry: false,
-        staleTime: 1000 * 60 * 5,
-    });
+import api from '../services/api/apiClient';
+
+const fetchOrders = async () => {
+    return await api.get('/orders');
 };
 
-export const useCreateOrder = () => {
-    const queryClient = useQueryClient();
+const saveOrder = async (orderData) => {
+    if (orderData._id) {
+        return await api.put(`/orders/${orderData._id}`, orderData);
+    } else {
+        return await api.post('/orders', orderData);
+    }
+};
 
+export const useOrders = () => {
+    return useQuery({ queryKey: ['orders'], queryFn: fetchOrders });
+};
+
+export const useSaveOrder = () => {
+    const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: createOrder,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['orders'] });
-        },
+        mutationFn: saveOrder,
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['orders'] }),
     });
 };
