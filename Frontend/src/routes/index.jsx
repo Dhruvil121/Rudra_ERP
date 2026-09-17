@@ -39,80 +39,80 @@ const router = createBrowserRouter([
             {
                 element: <AppLayout />,
                 children: [
-                    {
-                        index: true,
-                        element: <Dashboard />
-                    },
-                    {
-                        path: "/orders",
-                        element: <ProtectedRoute module={"order"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <Orders />
-                            }
-                        ]
-                    },
-                    {
-                        path: "/customers",
-                        element: <ProtectedRoute module={"customer"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <Customers />
-                            }
-                        ]
-                    },
-                    {
-                        path: "/products",
-                        element: <ProtectedRoute module={"product"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <Products />
-                            }
-                        ]
-                    },
-                    {
-                        path: "/inventory",
-                        element: <ProtectedRoute module={"inventory"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <InventoryModule />
-                            }
-                        ]
-                    },
-                    {
-                        path: "/process",
-                        element: <ProtectedRoute module={"process"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <ProcessModule />
-                            }
-                        ]
-                    },
-                    {
-                        path: "/assembling",
-                        element: <ProtectedRoute module={"assembling"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <AssemblingModule />
-                            }
-                        ]
-                    },
-                    {
-                        path: "/reports",
-                        element: <ProtectedRoute module={"reports"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <ReportsModule />
-                            }
-                        ];
-                    }
+                    // {
+                    //     index: true,
+                    //     element: <Dashboard />
+                    // },
+                    // {
+                    //     path: "/orders",
+                    //     element: <ProtectedRoute module={"order"} />,
+                    //     children: [
+                    //         {
+                    //             index: true,
+                    //             element: <Orders />
+                    //         }
+                    //     ]
+                    // },
+                    // {
+                    //     path: "/customers",
+                    //     element: <ProtectedRoute module={"customer"} />,
+                    //     children: [
+                    //         {
+                    //             index: true,
+                    //             element: <Customers />
+                    //         }
+                    //     ]
+                    // },
+                    // {
+                    //     path: "/products",
+                    //     element: <ProtectedRoute module={"product"} />,
+                    //     children: [
+                    //         {
+                    //             index: true,
+                    //             element: <Products />
+                    //         }
+                    //     ]
+                    // },
+                    // {
+                    //     path: "/inventory",
+                    //     element: <ProtectedRoute module={"inventory"} />,
+                    //     children: [
+                    //         {
+                    //             index: true,
+                    //             element: <InventoryModule />
+                    //         }
+                    //     ]
+                    // },
+                    // {
+                    //     path: "/process",
+                    //     element: <ProtectedRoute module={"process"} />,
+                    //     children: [
+                    //         {
+                    //             index: true,
+                    //             element: <ProcessModule />
+                    //         }
+                    //     ]
+                    // },
+                    // {
+                    //     path: "/assembling",
+                    //     element: <ProtectedRoute module={"assembling"} />,
+                    //     children: [
+                    //         {
+                    //             index: true,
+                    //             element: <AssemblingModule />
+                    //         }
+                    //     ]
+                    // },
+                    // {
+                    //     path: "/reports",
+                    //     element: <ProtectedRoute module={"reports"} />,
+                    //     children: [
+                    //         {
+                    //             index: true,
+                    //             element: <ReportsModule />
+                    //         }
+                    //     ]
+                    // }
                 ]
             }
         ]
