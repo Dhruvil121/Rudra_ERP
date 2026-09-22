@@ -7,7 +7,8 @@ import { ShoppingCart, Settings, Users, Box, Layers, FileText } from 'lucide-rea
  * @property {string} description
  * @property {string} path
  * @property {Object} icon - Lucide React component
- * @property {'blue' | 'green' | 'purple' | 'orange'} theme
+ * @property {'blue' | 'green' | 'purple' | 'orange' | 'red'} theme
+ * @property {string[]} actions - Available permission actions for this module
  */
 
 /** @type {ModuleConfig[]} */
@@ -19,6 +20,7 @@ export const ERP_MODULES = [
         path: '/customers',
         icon: Users,
         theme: 'purple',
+        actions: ['view', 'add', 'edit', 'delete', 'print'],
     },
     {
         id: 'order',
@@ -27,6 +29,7 @@ export const ERP_MODULES = [
         path: '/orders',
         icon: ShoppingCart,
         theme: 'blue',
+        actions: ['view', 'add', 'edit', 'delete', 'approve', 'print'],
     },
     {
         id: 'inventory',
@@ -35,6 +38,7 @@ export const ERP_MODULES = [
         path: '/inventory',
         icon: Box,
         theme: 'orange',
+        actions: ['view', 'add', 'edit', 'delete', 'export'],
     },
     {
         id: 'process',
@@ -43,6 +47,7 @@ export const ERP_MODULES = [
         path: '/process',
         icon: Settings,
         theme: 'green',
+        actions: ['view', 'add'],
     },
     {
         id: 'assembling',
@@ -51,6 +56,7 @@ export const ERP_MODULES = [
         path: '/assembling',
         icon: Layers,
         theme: 'blue',
+        actions: ['view', 'add', 'edit'],
     },
     {
         id: 'reports',
@@ -59,5 +65,28 @@ export const ERP_MODULES = [
         path: '/reports',
         icon: FileText,
         theme: 'red',
+        actions: ['view', 'export', 'print'],
     }
+];
+
+/**
+ * Factory process step names — the master list used in both:
+ * - Settings.jsx (permission assignment matrix)
+ * - Process.jsx (step-level authorization checks)
+ *
+ * When super admin creates a custom step via the Process modal,
+ * it gets permission-checked against this list. Custom steps not
+ * in this list are only editable by super_admin.
+ */
+export const FACTORY_PROCESSES = [
+    "Cutting",
+    "Drilling",
+    "Turning",
+    "Polish",
+    "Buffing",
+    "Plating",
+    "Packing",
+    "Quality Check",
+    "Painting",
+    "Assembling",
 ];

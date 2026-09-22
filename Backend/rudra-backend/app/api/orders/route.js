@@ -5,7 +5,13 @@ import { checkPermission, ACTIONS } from "../../../lib/auth"
 
 export async function GET(req) {
     try {
-        const auth = await checkPermission('order', ACTIONS.VIEW);
+        // Orders are viewed from both the Order module AND the Process module.
+        // Allow access if user has EITHER order.view OR process.view permission.
+        let auth = await checkPermission('order', ACTIONS.VIEW);
+        if (!auth.authorized) {
+            // Fallback: check if the user has process.view (needed for Process module)
+            auth = await checkPermission('process', ACTIONS.VIEW);
+        }
         if (!auth.authorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
         await dbConnect();

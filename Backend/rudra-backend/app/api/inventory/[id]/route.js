@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import dbConnect from "../../../../lib/mongodb";
-import InventoryGroup from "../../../../models/Inventory";
+import InventoryGroup from "../../../models/Inventory";
 import { checkPermission, ACTIONS } from "../../../../lib/auth";
 
 export async function PUT(req, { params }) {
@@ -9,7 +9,7 @@ export async function PUT(req, { params }) {
         if (!auth.authorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
         await dbConnect();
-        const { id } = params;
+        const { id } = await params;
         const body = await req.json();
 
         // Updates the group and completely replaces the subItems array with the new one from the frontend
@@ -31,7 +31,7 @@ export async function DELETE(req, { params }) {
         if (!auth.authorized) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
         await dbConnect();
-        const { id } = params;
+        const { id } = await params;
 
         const deletedGroup = await InventoryGroup.findByIdAndDelete(id);
 
