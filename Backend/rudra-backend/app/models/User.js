@@ -18,6 +18,10 @@ const UserSchema = new mongoose.Schema({
         type: String,
         default: 'manager',
     },
+    isActive: {
+        type: Boolean,
+        default: true,
+    },
     permissions: {
         type: Map,
         of: [String],

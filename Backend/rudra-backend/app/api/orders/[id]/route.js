@@ -6,7 +6,11 @@ import { checkPermission, ACTIONS } from "../../../../lib/auth";
 // GET: Fetch a single order by ID
 export async function GET(req, { params }) {
     try {
-        const auth = await checkPermission('order', ACTIONS.VIEW);
+        // Allow access with either order.view or process.view
+        let auth = await checkPermission('order', ACTIONS.VIEW);
+        if (!auth.authorized) {
+            auth = await checkPermission('process', ACTIONS.VIEW);
+        }
         if (!auth.authorized) {
             return NextResponse.json({ error: auth.error }, { status: auth.status });
         }

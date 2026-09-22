@@ -21,6 +21,14 @@ export async function POST(req) {
             return NextResponse.json({ error: "No user found with this email" }, { status: 401 });
         }
 
+        // Block deactivated users from logging in
+        if (user.isActive === false) {
+            return NextResponse.json(
+                { error: "Your account has been deactivated. Contact your administrator." },
+                { status: 403 }
+            );
+        }
+
         const isValidPassword = await bcrypt.compare(password, user.password);
         if (!isValidPassword) {
             return NextResponse.json({ error: "Invalid password" }, { status: 401 });

@@ -23,6 +23,7 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true },
     name: { type: String, required: true },
     role: { type: String, default: 'manager' },
+    isActive: { type: Boolean, default: true },
     permissions: { type: Map, of: [String], default: {} }
 });
 

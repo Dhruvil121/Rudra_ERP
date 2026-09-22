@@ -1,24 +1,29 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Menu, X, LayoutDashboard } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Shield } from 'lucide-react';
 import { useAuth, ACTIONS } from '../context/AuthContext';
 import { ERP_MODULES } from '../config/modules';
 
 export function AppLayout() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const location = useLocation();
-    const { hasPermission, user, logout } = useAuth();
+    const { hasPermission, user, logout, refreshUser } = useAuth();
 
     // Automatically close the mobile sidebar when a navigation item is clicked
+    // Also refresh user permissions from DB on route changes to handle live RBAC updates
     useEffect(() => {
         setIsMobileOpen(false);
+        // Non-blocking permission refresh — keeps sidebar and routes up-to-date
+        refreshUser();
     }, [location.pathname]);
 
     const permittedModules = ERP_MODULES.filter(module => hasPermission(module.id, ACTIONS.VIEW));
 
     const navItems = [
         { id: 'dashboard', title: 'Dashboard', path: '/', icon: LayoutDashboard },
-        ...permittedModules
+        ...permittedModules,
+        // Settings link — only visible to Super Admin
+        ...(user?.role === 'super_admin' ? [{ id: 'settings', title: 'Settings', path: '/settings', icon: Shield }] : []),
     ];
 
     // Dynamically determine the page title based on the current route
