@@ -17,6 +17,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAuth } from "../context/AuthContext";
 import { useOrders } from "../hooks/useOrderData";
 import { useProcessSequence, useSaveProcessSequence } from "../hooks/useProcessData";
+import { useFeedback } from '../context/FeedbackContext';
 
 const ALL_FIELDS = [
     { key: "partyName", label: "Party Name", type: "text" },
@@ -102,6 +103,7 @@ function ProcessDetail({ order, onBack }) {
     const [showProcessModal, setShowProcessModal] = useState(false);
     const { data: remoteSequence, isLoading } = useProcessSequence(order._id);
     const saveMutation = useSaveProcessSequence();
+    const { showToast } = useFeedback();
 
     const [sequence, setSequence] = useState([]);
     const [hasLoaded, setHasLoaded] = useState(false);
@@ -149,9 +151,9 @@ function ProcessDetail({ order, onBack }) {
     const handleSave = async () => {
         try {
             await saveMutation.mutateAsync({ orderId: order._id, sequence });
-            alert("Process details saved successfully!");
+            showToast("Process details saved successfully!", "success");
         } catch (e) {
-            alert("Error saving: " + e.message);
+            showToast("Error saving: " + e.message, "error");
         }
     };
 
@@ -258,7 +260,7 @@ function ProcessDetail({ order, onBack }) {
                 </div>
             </div>
 
-            <ProductProcessModal isOpen={showProcessModal} onClose={() => setShowProcessModal(false)} productName={order.items?.[0]?.rudraCode || "Product"} initialSequence={sequence} onSave={handleModalSave} />
+            <ProductProcessModal isOpen={showProcessModal} onClose={() => setShowProcessModal(false)} productName={order.items?.[0]?.rudraCode || "Product"} initialSequence={sequence} onSave={handleModalSave} showToast={showToast} />
         </div>
     );
 }
@@ -353,7 +355,7 @@ function DynamicProcessStep({ step, index, totalSteps, onFieldChange }) {
 // ==========================================
 // 4. DRAG AND DROP MODAL (Super Admin Only)
 // ==========================================
-function ProductProcessModal({ isOpen, onClose, productName, initialSequence, onSave }) {
+function ProductProcessModal({ isOpen, onClose, productName, initialSequence, onSave, showToast }) {
     const [sequence, setSequence] = useState([]);
     const [showAdd, setShowAdd] = useState(false);
     const [newProcessName, setNewProcessName] = useState("");
@@ -387,7 +389,7 @@ function ProductProcessModal({ isOpen, onClose, productName, initialSequence, on
         // Safety check: If user typed a process name but forgot to click "Add Process", auto-add it!
         if (showAdd && newProcessName.trim() !== "") {
             if (selectedFields.length === 0) {
-                alert("Please select at least one checkbox field for your new process.");
+                showToast("Please select at least one checkbox field for your new process.", "warning");
                 return;
             }
             finalSeq.push({
@@ -400,7 +402,7 @@ function ProductProcessModal({ isOpen, onClose, productName, initialSequence, on
         }
 
         if (finalSeq.length === 0) {
-            alert("Please add at least one process step before saving.");
+            showToast("Please add at least one process step before saving.", "warning");
             return;
         }
 

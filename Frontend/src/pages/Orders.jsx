@@ -3,6 +3,7 @@ import { Search, Plus, Edit2, Trash2, ArrowLeft, FileText, Check, X, Printer, Ch
 import { PermissionGuard } from '../components/auth/PermissionGuard';
 import { ACTIONS } from '../context/AuthContext';
 import { useOrders, useSaveOrder } from '../hooks/useOrderData';
+import { useFeedback } from '../context/FeedbackContext';
 import { Loader2 } from 'lucide-react';
 
 export default function OrderModule() {
@@ -24,7 +25,7 @@ export default function OrderModule() {
     return (
         <div className="w-full">
             {view === 'list' && <OrderList orders={orders} onNavigate={handleNavigate} />}
-            {view === 'detail' && <OrderDetail order={selectedOrder} onNavigate={handleNavigate} />}
+            {view === 'detail' && <OrderDetail order={selectedOrder} onNavigate={handleNavigate} onApprove={saveMutation.mutateAsync} isApproving={saveMutation.isPending} />}
             {view === 'form' && <OrderForm order={selectedOrder} onNavigate={handleNavigate} onSave={saveMutation.mutate} />}
         </div>
     );
@@ -47,6 +48,13 @@ const formatDisplayDate = (dateString) => {
 // ==========================================
 function OrderList({ orders, onNavigate }) {
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('All Status');
+
+    const filteredOrders = orders?.filter(order => {
+        const matchesSearch = !searchTerm || order.piNo?.toLowerCase().includes(searchTerm.toLowerCase()) || order.name?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStatus = statusFilter === 'All Status' || order.status === statusFilter;
+        return matchesSearch && matchesStatus;
+    });
 
     return (
         <div className="space-y-4">
@@ -77,7 +85,11 @@ function OrderList({ orders, onNavigate }) {
                             className="w-full pl-9 pr-3 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:border-slate-400 transition-colors"
                         />
                     </div>
-                    <select className="py-1.5 px-3 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:border-slate-400">
+                    <select 
+                        className="py-1.5 px-3 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:border-slate-400"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                    >
                         <option>All Status</option>
                         <option>Pending</option>
                         <option>Approved</option>
@@ -97,7 +109,7 @@ function OrderList({ orders, onNavigate }) {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {orders?.map((order) => (
+                        {filteredOrders?.map((order) => (
                             <tr
                                 key={order._id}
                                 onClick={() => onNavigate('detail', order)}
@@ -127,8 +139,29 @@ function OrderList({ orders, onNavigate }) {
 // ==========================================
 // 2. DETAIL VIEW
 // ==========================================
-function OrderDetail({ order, onNavigate }) {
+function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
+    const { showConfirm, showToast } = useFeedback();
+    
     if (!order) return null;
+
+    const handleApprove = async () => {
+        const isConfirmed = await showConfirm({
+            title: 'Approve Order',
+            message: 'Are you sure you want to approve this order?',
+            type: 'info',
+            confirmText: 'Approve'
+        });
+
+        if (isConfirmed) {
+            try {
+                await onApprove({ ...order, status: 'Approved' });
+                showToast('Order Approved Successfully', 'success');
+                onNavigate('list');
+            } catch (err) {
+                showToast('Failed to approve order', 'error');
+            }
+        }
+    };
 
     return (
         <div className="space-y-4 max-w-6xl mx-auto">
@@ -151,9 +184,16 @@ function OrderDetail({ order, onNavigate }) {
                     </PermissionGuard>
 
                     <PermissionGuard module="order" action={ACTIONS.APPROVE}>
-                        <button className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 text-sm font-medium rounded-sm hover:bg-green-200 transition-colors">
-                            <CheckCircle className="w-3.5 h-3.5" /> Approve
-                        </button>
+                        {order.status !== 'Approved' && (
+                            <button 
+                                onClick={handleApprove}
+                                disabled={isApproving}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 text-sm font-medium rounded-sm hover:bg-green-200 transition-colors disabled:opacity-50"
+                            >
+                                {isApproving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />} 
+                                {isApproving ? 'Approving...' : 'Approve'}
+                            </button>
+                        )}
                     </PermissionGuard>
 
                     <PermissionGuard module="order" action={ACTIONS.EDIT}>
