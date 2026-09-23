@@ -1,19 +1,19 @@
 import { useState } from 'react';
-import { FileText, Calendar, Download, Printer, TrendingUp, Package, Cog } from 'lucide-react';
+import { FileText, Calendar, Download, Printer, TrendingUp, Package, Cog, Loader2 } from 'lucide-react';
 import { FormInput } from '../components/forms/FormInputs';
+import { useReports } from '../hooks/useReportsData';
 
 export default function ReportsModule() {
     const [reportType, setReportType] = useState('daily'); // 'daily' or 'monthly'
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-    const [selectedMonth, setSelectedMonth] = useState('2026-09'); // Defaulting to current context
+    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // e.g., '2026-09'
 
-    // Mock data for the report summary
-    const summaryStats = {
-        daily: { production: '1,250 kg', assembly: '450 units', waste: '12 kg' },
-        monthly: { production: '32,400 kg', assembly: '12,500 units', waste: '340 kg' }
-    };
+    const activeDate = reportType === 'daily' ? selectedDate : selectedMonth;
+    const { data, isLoading, isError } = useReports(reportType, activeDate);
 
-    const currentStats = summaryStats[reportType];
+    // Fallback data if loading or empty
+    const currentStats = data?.summary || { production: '0 Pcs', assembly: '0 Boxes', waste: '0 Pcs' };
+    const logs = data?.logs || [];
 
     return (
         <div className="max-w-7xl mx-auto space-y-6">
@@ -86,9 +86,12 @@ export default function ReportsModule() {
                         />
                     )}
                 </div>
-                <button className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow-sm transition-colors mb-4">
-                    Generate Report
-                </button>
+                {isLoading && (
+                    <div className="flex items-center gap-2 text-slate-500 font-medium mb-4">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Fetching data...
+                    </div>
+                )}
             </div>
 
             {/* SUMMARY CARDS */}
@@ -98,7 +101,7 @@ export default function ReportsModule() {
                         <Cog className="w-6 h-6" />
                     </div>
                     <div>
-                        <p className="text-sm font-semibold text-slate-500 mb-1">Total Processed (Turning/Buffing)</p>
+                        <p className="text-sm font-semibold text-slate-500 mb-1">Total Processed (Input)</p>
                         <h3 className="text-2xl font-bold text-slate-800">{currentStats.production}</h3>
                     </div>
                 </div>
@@ -126,38 +129,57 @@ export default function ReportsModule() {
 
             {/* DETAILED DATA TABLE */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-slate-400" />
-                    <h2 className="text-lg font-bold text-slate-700">
-                        {reportType === 'daily' ? `Log for ${selectedDate}` : `Summary for ${selectedMonth}`}
-                    </h2>
+                <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-slate-400" />
+                        <h2 className="text-lg font-bold text-slate-700">
+                            {reportType === 'daily' ? `Log for ${selectedDate}` : `Summary for ${selectedMonth}`}
+                        </h2>
+                    </div>
+                    <span className="text-sm font-medium text-slate-500">{logs.length} process(es) found</span>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="border-b border-slate-200 text-sm font-semibold text-slate-600 bg-white">
-                                <th className="p-4">Batch No.</th>
-                                <th className="p-4">Process Stage</th>
+                                <th className="p-4">Batch No. (Order)</th>
+                                <th className="p-4">Latest Process Stage</th>
                                 <th className="p-4">Input Qty</th>
                                 <th className="p-4">Output Qty</th>
                                 <th className="p-4">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            <tr className="hover:bg-slate-50 transition-colors">
-                                <td className="p-4 font-medium text-slate-800">LOT-2026-09-01</td>
-                                <td className="p-4 text-slate-600">Turning</td>
-                                <td className="p-4 text-slate-600">500 kg</td>
-                                <td className="p-4 text-slate-600">485 kg</td>
-                                <td className="p-4"><span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">Completed</span></td>
-                            </tr>
-                            <tr className="hover:bg-slate-50 transition-colors">
-                                <td className="p-4 font-medium text-slate-800">LOT-2026-09-02</td>
-                                <td className="p-4 text-slate-600">Buffing & Plating</td>
-                                <td className="p-4 text-slate-600">200 kg</td>
-                                <td className="p-4 text-slate-600">198 kg</td>
-                                <td className="p-4"><span className="px-3 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded-full">In Progress</span></td>
-                            </tr>
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan="5" className="p-8 text-center text-slate-500">
+                                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                                        Loading logs...
+                                    </td>
+                                </tr>
+                            ) : logs.length === 0 ? (
+                                <tr>
+                                    <td colSpan="5" className="p-8 text-center text-slate-500 font-medium">
+                                        No process data available for the selected timeframe.
+                                    </td>
+                                </tr>
+                            ) : (
+                                logs.map((log) => (
+                                    <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                                        <td className="p-4 font-medium text-slate-800">{log.batchNo || '-'}</td>
+                                        <td className="p-4 text-slate-600">{log.stage || 'N/A'}</td>
+                                        <td className="p-4 text-slate-600">{log.inputQty}</td>
+                                        <td className="p-4 text-slate-600">{log.outputQty}</td>
+                                        <td className="p-4">
+                                            <span className={`px-3 py-1 text-xs font-bold rounded-full ${
+                                                log.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                                            }`}>
+                                                {log.status || 'In Progress'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
