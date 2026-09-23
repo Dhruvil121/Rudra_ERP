@@ -3,6 +3,7 @@ import { Search, Plus, Edit2, Trash2, ArrowLeft, Building2, Check, X, Loader2 } 
 import { PermissionGuard } from '../components/auth/PermissionGuard';
 import { ACTIONS } from '../context/AuthContext';
 import { useCustomerList, useCreateCustomer, useUpdateCustomer, useDeleteCustomer } from '../hooks/useCustomerData';
+import { useFeedback } from '../context/FeedbackContext';
 
 export default function CustomerModule() {
     const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
@@ -127,16 +128,25 @@ function CustomerList({ onNavigate }) {
 // ==========================================
 function CustomerDetail({ customer, onNavigate }) {
     const deleteCustomer = useDeleteCustomer();
+    const { showConfirm, showToast } = useFeedback();
 
     if (!customer) return null;
 
     const handleDelete = async () => {
-        if (!confirm(`Are you sure you want to delete "${customer.firmName}"?`)) return;
+        const isConfirmed = await showConfirm({
+            title: 'Delete Customer',
+            message: `Are you sure you want to delete "${customer.firmName}"?`,
+            type: 'danger',
+            confirmText: 'Delete'
+        });
+        
+        if (!isConfirmed) return;
         try {
             await deleteCustomer.mutateAsync(customer._id);
+            showToast('Customer deleted successfully', 'success');
             onNavigate('list');
         } catch (err) {
-            alert('Failed to delete customer: ' + err.message);
+            showToast('Failed to delete customer: ' + err.message, 'error');
         }
     };
 

@@ -3,6 +3,7 @@ import { Search, Plus, Edit2, Trash2, ArrowLeft, FileText, Check, X, Printer, Ch
 import { PermissionGuard } from '../components/auth/PermissionGuard';
 import { ACTIONS } from '../context/AuthContext';
 import { useOrders, useSaveOrder } from '../hooks/useOrderData';
+import { useFeedback } from '../context/FeedbackContext';
 import { Loader2 } from 'lucide-react';
 
 export default function OrderModule() {
@@ -139,16 +140,25 @@ function OrderList({ orders, onNavigate }) {
 // 2. DETAIL VIEW
 // ==========================================
 function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
+    const { showConfirm, showToast } = useFeedback();
+    
     if (!order) return null;
 
     const handleApprove = async () => {
-        if(window.confirm('Are you sure you want to approve this order?')) {
+        const isConfirmed = await showConfirm({
+            title: 'Approve Order',
+            message: 'Are you sure you want to approve this order?',
+            type: 'info',
+            confirmText: 'Approve'
+        });
+
+        if (isConfirmed) {
             try {
                 await onApprove({ ...order, status: 'Approved' });
-                alert('Order Approved Successfully');
+                showToast('Order Approved Successfully', 'success');
                 onNavigate('list');
             } catch (err) {
-                alert('Failed to approve order');
+                showToast('Failed to approve order', 'error');
             }
         }
     };

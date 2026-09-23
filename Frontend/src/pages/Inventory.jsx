@@ -3,6 +3,7 @@ import { Search, Plus, Edit2, Trash2, ArrowLeft, Package, Check, X, Loader2 } fr
 import { PermissionGuard } from '../components/auth/PermissionGuard';
 import { ACTIONS } from '../context/AuthContext';
 import { useInventory, useSaveInventory, useDeleteInventory } from '../hooks/useInventoryData';
+import { useFeedback } from '../context/FeedbackContext';
 
 export default function InventoryModule() {
     const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
@@ -13,15 +14,29 @@ export default function InventoryModule() {
     const saveMutation = useSaveInventory();
     const deleteMutation = useDeleteInventory();
 
+    const { showConfirm, showToast } = useFeedback();
+
     const handleNavigate = (newView, group = null) => {
         setSelectedGroup(group);
         setView(newView);
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Are you sure you want to delete this inventory group?")) {
-            await deleteMutation.mutateAsync(id);
-            handleNavigate('list');
+    const handleDelete = async (id, groupName) => {
+        const isConfirmed = await showConfirm({
+            title: 'Delete Inventory Group',
+            message: `Are you sure you want to delete "${groupName}"?`,
+            type: 'danger',
+            confirmText: 'Delete'
+        });
+
+        if (isConfirmed) {
+            try {
+                await deleteMutation.mutateAsync(id);
+                showToast('Inventory group deleted successfully', 'success');
+                handleNavigate('list');
+            } catch (err) {
+                showToast('Failed to delete inventory group', 'error');
+            }
         }
     };
 
@@ -133,7 +148,7 @@ function InventoryDetail({ group, onNavigate, onDelete }) {
                         </button>
                     </PermissionGuard>
                     <PermissionGuard module="inventory" action={ACTIONS.DELETE}>
-                        <button onClick={() => onDelete(group._id)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-sm hover:bg-red-600 transition-colors">
+                        <button onClick={() => onDelete(group._id, group.groupName)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white text-sm font-medium rounded-sm hover:bg-red-600 transition-colors">
                             <Trash2 className="w-3.5 h-3.5" /> Delete
                         </button>
                     </PermissionGuard>

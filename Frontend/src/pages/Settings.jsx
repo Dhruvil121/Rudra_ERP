@@ -11,6 +11,7 @@ import {
     ToggleLeft, ToggleRight, RefreshCw, X, Settings as SettingsIcon, Layers
 } from 'lucide-react';
 import { ERP_MODULES } from '../config/modules';
+import { useFeedback } from '../context/FeedbackContext';
 
 // ==========================================
 // MAIN SETTINGS MODULE
@@ -87,6 +88,7 @@ function UserManagementTab() {
     const reactivateMutation = useReactivateUser();
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
+    const { showToast } = useFeedback();
 
     if (isLoading) {
         return <div className="flex justify-center p-24"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
@@ -102,16 +104,18 @@ function UserManagementTab() {
         try {
             await deleteMutation.mutateAsync(userId);
             setDeleteConfirm(null);
+            showToast("Manager deactivated successfully", "success");
         } catch (err) {
-            alert("Error: " + err.message);
+            showToast("Error: " + err.message, "error");
         }
     };
 
     const handleReactivate = async (userId) => {
         try {
             await reactivateMutation.mutateAsync(userId);
+            showToast("Manager reactivated successfully", "success");
         } catch (err) {
-            alert("Error: " + err.message);
+            showToast("Error: " + err.message, "error");
         }
     };
 
