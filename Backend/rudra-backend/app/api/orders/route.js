@@ -39,6 +39,20 @@ export async function POST(req) {
         const newOrder = await Order.create(body);
         return NextResponse.json(newOrder, { status: 201 });
     } catch (error) {
+        console.error("Order Creation Error:", error);
+        
+        // Handle Mongoose Validation Errors
+        if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map(val => val.message);
+            return NextResponse.json({ error: messages.join(', ') }, { status: 400 });
+        }
+        
+        // Handle MongoDB Duplicate Key Errors
+        if (error.code === 11000) {
+            const field = Object.keys(error.keyValue)[0];
+            return NextResponse.json({ error: `An order with this ${field} already exists.` }, { status: 400 });
+        }
+
         return NextResponse.json({ error: "Failed to create order" }, { status: 500 });
     }
 }

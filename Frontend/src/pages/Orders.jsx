@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Search, Plus, Edit2, Trash2, ArrowLeft, FileText, Check, X, Printer, CheckCircle } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, ArrowLeft, FileText, Check, X, Printer, CheckCircle, Package } from 'lucide-react';
 import { PermissionGuard } from '../components/auth/PermissionGuard';
 import { ACTIONS } from '../context/AuthContext';
 import { useOrders, useSaveOrder } from '../hooks/useOrderData';
+import { useCalculateOrderBOM } from '../hooks/useBOMData';
 import { useFeedback } from '../context/FeedbackContext';
 import { Loader2 } from 'lucide-react';
 
@@ -141,6 +142,8 @@ function OrderList({ orders, onNavigate }) {
 // ==========================================
 function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
     const { showConfirm, showToast } = useFeedback();
+    const [showBOM, setShowBOM] = useState(false);
+    const { data: bomData, isLoading: isBomLoading } = useCalculateOrderBOM(order);
     
     if (!order) return null;
 
@@ -182,6 +185,13 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                             <Printer className="w-3.5 h-3.5" /> Print
                         </button>
                     </PermissionGuard>
+
+                    <button 
+                        onClick={() => setShowBOM(!showBOM)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-sm transition-colors ${showBOM ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
+                    >
+                        <Package className="w-3.5 h-3.5" /> {showBOM ? 'Hide BOM' : 'View BOM'}
+                    </button>
 
                     <PermissionGuard module="order" action={ACTIONS.APPROVE}>
                         {order.status !== 'Approved' && (
@@ -253,6 +263,46 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                     </table>
                 </div>
             </div>
+
+            {showBOM && (
+                <div className="bg-white rounded-sm border border-indigo-200 overflow-hidden shadow-sm">
+                    <div className="px-4 py-3 border-b border-indigo-100 bg-indigo-50 flex justify-between items-center">
+                        <h2 className="text-xs font-bold text-indigo-700 uppercase tracking-widest flex items-center gap-2">
+                            <Package className="w-4 h-4" /> Bill of Materials (Required)
+                        </h2>
+                    </div>
+                    <div className="p-4">
+                        {isBomLoading ? (
+                            <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-indigo-600" /></div>
+                        ) : bomData && bomData.length > 0 ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500">
+                                            <th className="p-3">Material ID</th>
+                                            <th className="p-3 text-right">Required Qty</th>
+                                            <th className="p-3">Unit</th>
+                                            <th className="p-3">Remarks</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {bomData.map((item, idx) => (
+                                            <tr key={idx} className="hover:bg-slate-50">
+                                                <td className="p-3 text-sm text-slate-800 font-medium">{item.inventorySubItemId}</td>
+                                                <td className="p-3 text-sm font-bold text-indigo-600 text-right">{item.requiredQuantity}</td>
+                                                <td className="p-3 text-sm text-slate-600">{item.unit}</td>
+                                                <td className="p-3 text-sm text-slate-500">{item.remarks || '-'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="text-sm text-slate-500 text-center py-4">No BOM found for the items in this order.</p>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {order.remarks && (
                 <div className="bg-white rounded-sm border border-slate-200 p-6">

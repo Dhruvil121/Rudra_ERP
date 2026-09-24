@@ -10,7 +10,8 @@ const saveOrder = async (orderData) => {
     if (orderData._id) {
         return await api.put(`/orders/${orderData._id}`, orderData);
     } else {
-        return await api.post('/orders', orderData);
+        const { _id, ...postData } = orderData; // Remove empty _id
+        return await api.post('/orders', postData);
     }
 };
 

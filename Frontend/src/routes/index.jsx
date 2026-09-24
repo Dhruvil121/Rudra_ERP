@@ -10,10 +10,12 @@ import ProcessModule from "../pages/Process";
 import AssemblingModule from "../pages/Assembling";
 import ReportsModule from "../pages/Reports";
 import SettingsModule from "../pages/Settings";
+import MarketplaceLeads from "../pages/MarketplaceLeads";
 import { useAuth } from "../context/AuthContext";
 import { ACTIONS } from "../context/AuthContext";
 import Login from "../pages/Login";
 import { Navigate, Outlet } from "react-router-dom";
+import BOM from "../pages/BOM";
 
 
 const ProtectedRoute = ({ module }) => {
@@ -115,12 +117,32 @@ const router = createBrowserRouter([
                         ]
                     },
                     {
+                        path: "/leads",
+                        element: <ProtectedRoute module={"leads"} />,
+                        children: [
+                            {
+                                index: true,
+                                element: <MarketplaceLeads />
+                            }
+                        ]
+                    },
+                    {
                         path: "/settings",
                         element: <ProtectedRoute />,
                         children: [
                             {
                                 index: true,
                                 element: <SettingsModule />
+                            }
+                        ]
+                    },
+                    {
+                        path: "/BOM",
+                        element: <ProtectedRoute module={"BOM"} />,
+                        children: [
+                            {
+                                index: true,
+                                element: <BOM />
                             }
                         ]
                     }
