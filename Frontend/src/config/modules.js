@@ -1,4 +1,4 @@
-import { ShoppingCart, Settings, Users, Box, Layers, FileText } from 'lucide-react';
+import { ShoppingCart, Settings, Users, Box, Layers, FileText, Megaphone } from 'lucide-react';
 
 /**
  * @typedef {Object} ModuleConfig
@@ -66,6 +66,24 @@ export const ERP_MODULES = [
         icon: FileText,
         theme: 'red',
         actions: ['view', 'export', 'print'],
+    },
+    {
+        id: 'leads',
+        title: 'Marketplace Leads',
+        description: 'Manage external leads from IndiaMART, Justdial, etc.',
+        path: '/leads',
+        icon: Megaphone,
+        theme: 'blue',
+        actions: ['view', 'edit'],
+    },
+    {
+        id: 'BOM',
+        title: 'BOM',
+        description: 'Manage Bill of Materials',
+        path: '/BOM',
+        icon: Box,
+        theme: 'green',
+        actions: ['view', 'add', 'edit', 'delete', 'print'],
     }
 ];
 
