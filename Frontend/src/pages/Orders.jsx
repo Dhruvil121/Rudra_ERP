@@ -86,7 +86,7 @@ function OrderList({ orders, onNavigate }) {
                             className="w-full pl-9 pr-3 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:border-slate-400 transition-colors"
                         />
                     </div>
-                    <select 
+                    <select
                         className="py-1.5 px-3 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:border-slate-400"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
@@ -144,7 +144,9 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
     const { showConfirm, showToast } = useFeedback();
     const [showBOM, setShowBOM] = useState(false);
     const { data: bomData, isLoading: isBomLoading } = useCalculateOrderBOM(order);
-    
+    console.log(bomData);
+
+
     if (!order) return null;
 
     const handleApprove = async () => {
@@ -186,7 +188,7 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                         </button>
                     </PermissionGuard>
 
-                    <button 
+                    <button
                         onClick={() => setShowBOM(!showBOM)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-sm transition-colors ${showBOM ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
                     >
@@ -195,12 +197,12 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
 
                     <PermissionGuard module="order" action={ACTIONS.APPROVE}>
                         {order.status !== 'Approved' && (
-                            <button 
+                            <button
                                 onClick={handleApprove}
                                 disabled={isApproving}
                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 text-sm font-medium rounded-sm hover:bg-green-200 transition-colors disabled:opacity-50"
                             >
-                                {isApproving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />} 
+                                {isApproving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
                                 {isApproving ? 'Approving...' : 'Approve'}
                             </button>
                         )}
@@ -279,7 +281,7 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                                 <table className="w-full text-left border-collapse">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500">
-                                            <th className="p-3">Material ID</th>
+                                            <th className="p-3">Material Name</th>
                                             <th className="p-3 text-right">Required Qty</th>
                                             <th className="p-3">Unit</th>
                                             <th className="p-3">Remarks</th>
@@ -288,7 +290,12 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                                     <tbody className="divide-y divide-slate-100">
                                         {bomData.map((item, idx) => (
                                             <tr key={idx} className="hover:bg-slate-50">
-                                                <td className="p-3 text-sm text-slate-800 font-medium">{item.inventorySubItemId}</td>
+                                                <td className="p-3">
+                                                    <div className="text-sm text-slate-800 font-bold">{item.materialName}</div>
+                                                    {item.materialCode !== '-' && (
+                                                        <div className="text-xs text-slate-400 font-medium mt-0.5">{item.materialCode}</div>
+                                                    )}
+                                                </td>
                                                 <td className="p-3 text-sm font-bold text-indigo-600 text-right">{item.requiredQuantity}</td>
                                                 <td className="p-3 text-sm text-slate-600">{item.unit}</td>
                                                 <td className="p-3 text-sm text-slate-500">{item.remarks || '-'}</td>
