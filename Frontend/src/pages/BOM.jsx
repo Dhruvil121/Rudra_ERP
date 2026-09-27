@@ -158,8 +158,7 @@ function BOMForm({ initialData, onNavigate, onSave }) {
             <div className="bg-white rounded-sm border border-slate-200 p-6 grid grid-cols-3 gap-6">
                 <div>
                     <label className="text-sm font-medium text-slate-500 block mb-1.5">Finished Product Code (Rudra Code)</label>
-                    <input type="text" value={formData.finishedItemCode} onChange={(e) => setFormData(p => ({ ...p, finishedItemCode: e.target.value }))} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-sm focus:border-indigo-400 outline-none uppercase font-bold" placeholder="e.g. R-001" />
-                </div>
+                    <input type="text" value={formData.finishedItemCode} onChange={(e) => setFormData(p => ({ ...p, finishedItemCode: e.target.value }))} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-sm focus:border-indigo-400 outline-none font-bold" placeholder="e.g. R-001" />                </div>
                 <div>
                     <label className="text-sm font-medium text-slate-500 block mb-1.5">Version</label>
                     <input type="text" value={formData.version} onChange={(e) => setFormData(p => ({ ...p, version: e.target.value }))} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-sm focus:border-indigo-400 outline-none" />

@@ -21,8 +21,10 @@ export async function POST(req) {
             return NextResponse.json({ error: "finishedItemCode and quantity are required" }, { status: 400 });
         }
 
-        const bom = await BOM.findOne({ finishedItemCode, isActive: true });
-
+        const bom = await BOM.findOne({
+            finishedItemCode: { $regex: new RegExp(`^${finishedItemCode}$`, 'i') },
+            isActive: true
+        });
         if (!bom) {
             return NextResponse.json({
                 finishedItemCode,
