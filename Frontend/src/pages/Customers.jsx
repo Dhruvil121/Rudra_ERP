@@ -6,7 +6,7 @@ import { useCustomerList, useCreateCustomer, useUpdateCustomer, useDeleteCustome
 import { useFeedback } from '../context/FeedbackContext';
 
 export default function CustomerModule() {
-    const [view, setView] = useState('list'); // 'list' | 'detail' | 'form'
+    const [view, setView] = useState('list');
     const [selectedCustomer, setSelectedCustomer] = useState(null);
 
     const handleNavigate = (newView, customer = null) => {
@@ -24,16 +24,16 @@ export default function CustomerModule() {
 }
 
 // ==========================================
-// 1. LIST VIEW — Fetches from backend
+// 1. LIST VIEW
 // ==========================================
 function CustomerList({ onNavigate }) {
     const [searchTerm, setSearchTerm] = useState('');
     const { data: customers, isLoading, isError } = useCustomerList();
 
-    // Filter customers based on search term
     const filteredCustomers = (customers || []).filter(c => {
         const term = searchTerm.toLowerCase();
         return (
+            c.partyCode?.toLowerCase().includes(term) ||
             c.firmName?.toLowerCase().includes(term) ||
             c.brandName?.toLowerCase().includes(term) ||
             c.personalName?.toLowerCase().includes(term) ||
@@ -45,8 +45,10 @@ function CustomerList({ onNavigate }) {
         <div className="space-y-4">
             <div className="flex justify-between items-center pb-4 border-b border-slate-200">
                 <div>
-                    <h1 className="text-xl font-bold text-slate-800">Customers</h1>
-                    <p className="text-sm text-slate-500">Customer Master <span className="text-slate-400 ml-1">{filteredCustomers.length} active</span></p>
+                    <h1 className="text-xl font-bold text-slate-800">Customers (Party Master)</h1>
+                    <p className="text-sm text-slate-500">
+                        Code-Based Customer Master <span className="text-slate-400 ml-1">{filteredCustomers.length} active</span>
+                    </p>
                 </div>
                 <PermissionGuard module="customer" action={ACTIONS.ADD}>
                     <button
@@ -60,11 +62,11 @@ function CustomerList({ onNavigate }) {
 
             <div className="flex justify-between items-center bg-white p-3 rounded-md shadow-sm border border-slate-100">
                 <div className="flex items-center gap-4 flex-1">
-                    <div className="relative w-72">
+                    <div className="relative w-80">
                         <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Search Firm, Brand, Code..."
+                            placeholder="Search Party Code, Firm, Brand, Mobile..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-9 pr-3 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:border-slate-400"
@@ -73,21 +75,18 @@ function CustomerList({ onNavigate }) {
                 </div>
             </div>
 
-            {/* Loading State */}
             {isLoading && (
                 <div className="flex justify-center items-center py-12">
                     <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
                 </div>
             )}
 
-            {/* Error State */}
             {isError && (
                 <div className="p-6 text-center text-red-500 font-medium bg-red-50 rounded-md">
                     Failed to load customers. Make sure the backend is running.
                 </div>
             )}
 
-            {/* Customer Cards */}
             {!isLoading && !isError && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pt-2">
                     {filteredCustomers.map(customer => (
@@ -96,12 +95,21 @@ function CustomerList({ onNavigate }) {
                             onClick={() => onNavigate('detail', customer)}
                             className="bg-white p-4 rounded-md shadow-sm border border-slate-100 flex gap-4 cursor-pointer hover:shadow-md hover:border-slate-300 transition-all"
                         >
-                            <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center shrink-0 text-slate-500">
-                                <Building2 className="w-5 h-5" />
+                            <div className="w-10 h-10 rounded bg-indigo-50 flex items-center justify-center shrink-0 text-indigo-600 font-bold text-xs">
+                                {customer.partyCode || <Building2 className="w-5 h-5" />}
                             </div>
                             <div className="flex flex-col gap-1 overflow-hidden w-full">
-                                <h3 className="font-semibold text-slate-800 text-sm truncate">{customer.firmName}</h3>
-                                <p className="text-xs text-slate-500">{customer.brandName} • {customer.mobileNo}</p>
+                                <div className="flex items-center justify-between gap-2">
+                                    <h3 className="font-semibold text-slate-800 text-sm truncate">{customer.firmName}</h3>
+                                    {customer.partyCode && (
+                                        <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded uppercase shrink-0">
+                                            {customer.partyCode}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-xs text-slate-500 truncate">
+                                    {customer.brandName ? `${customer.brandName} • ` : ''}{customer.mobileNo}
+                                </p>
                                 <div className="flex items-center justify-between mt-1 w-full">
                                     <span className="px-2 py-0.5 bg-slate-800 text-white text-[10px] font-bold rounded-sm uppercase tracking-wide">
                                         {customer.status || 'Active'}
@@ -139,7 +147,7 @@ function CustomerDetail({ customer, onNavigate }) {
             type: 'danger',
             confirmText: 'Delete'
         });
-        
+
         if (!isConfirmed) return;
         try {
             await deleteCustomer.mutateAsync(customer._id);
@@ -160,6 +168,11 @@ function CustomerDetail({ customer, onNavigate }) {
                     <span className="text-slate-400 cursor-pointer" onClick={() => onNavigate('list')}>Customers</span>
                     <span className="text-slate-300">›</span>
                     <span className="font-semibold text-slate-800">{customer.firmName}</span>
+                    {customer.partyCode && (
+                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-bold rounded uppercase">
+                            {customer.partyCode}
+                        </span>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -189,8 +202,10 @@ function CustomerDetail({ customer, onNavigate }) {
                 </div>
                 <div className="p-6">
                     <div className="max-w-xl flex flex-col">
+                        <InfoRow label="Party Code" value={customer.partyCode} />
                         <InfoRow label="Firm Name" value={customer.firmName} />
                         <InfoRow label="Brand Name" value={customer.brandName} />
+                        <InfoRow label="Default Box" value={customer.defaultBox} />
                         <InfoRow label="Personal Name" value={customer.personalName} />
                         <InfoRow label="Mobile" value={customer.mobileNo} icon="📞" />
                         <InfoRow label="Email" value={customer.email} icon="✉️" />
@@ -216,7 +231,7 @@ const InfoRow = ({ label, value, icon }) => (
 );
 
 // ==========================================
-// 3. FORM VIEW — Wired to backend mutations
+// 3. FORM VIEW
 // ==========================================
 function CustomerForm({ customer, onNavigate }) {
     const isEditing = !!customer;
@@ -224,12 +239,13 @@ function CustomerForm({ customer, onNavigate }) {
     const updateCustomer = useUpdateCustomer();
     const [error, setError] = useState('');
 
-    // Controlled form state
     const [formData, setFormData] = useState({
+        partyCode: customer?.partyCode || '',
         firmName: customer?.firmName || '',
         brandName: customer?.brandName || '',
+        defaultBox: customer?.defaultBox || '',
         gstNo: customer?.gstNo || '',
-        group: customer?.group || '',
+        group: customer?.group || 'sundry_debtors',
         personalName: customer?.personalName || '',
         mobileNo: customer?.mobileNo || '',
         email: customer?.email || '',
@@ -264,12 +280,13 @@ function CustomerForm({ customer, onNavigate }) {
         { value: 'gujarat', label: 'Gujarat' },
         { value: 'maharashtra', label: 'Maharashtra' },
         { value: 'rajasthan', label: 'Rajasthan' },
+        { value: 'delhi', label: 'Delhi' },
+        { value: 'karnataka', label: 'Karnataka' },
     ];
 
     const handleSave = async () => {
         setError('');
 
-        // Basic validation
         if (!formData.firmName.trim() || !formData.mobileNo.trim() || !formData.group) {
             setError('Firm Name, Mobile No, and Group are required.');
             return;
@@ -283,7 +300,7 @@ function CustomerForm({ customer, onNavigate }) {
             }
             onNavigate('list');
         } catch (err) {
-            setError(err.message);
+            setError(err.message || 'Failed to save customer');
         }
     };
 
@@ -325,20 +342,32 @@ function CustomerForm({ customer, onNavigate }) {
             <form className="space-y-6 pb-12" onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
                 <div className="bg-white rounded-sm border border-slate-200">
                     <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-                        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Business Details</h2>
+                        <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Business & Code Details</h2>
                     </div>
                     <div className="p-6 max-w-2xl mx-auto">
+                        <FormRow label="Party Code">
+                            <input
+                                type="text"
+                                name="partyCode"
+                                value={formData.partyCode}
+                                onChange={handleChange}
+                                placeholder="e.g. PC-001 (Auto-generated if blank)"
+                                className="w-full px-3 py-1.5 text-sm font-bold uppercase border border-slate-200 rounded-sm focus:outline-none focus:border-indigo-500"
+                            />
+                        </FormRow>
                         <FormRow label="Firm Name" required>
                             <input type="text" name="firmName" value={formData.firmName} onChange={handleChange} className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-sm focus:outline-none focus:border-slate-400" />
                         </FormRow>
                         <FormRow label="Brand Name">
-                            <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-sm focus:outline-none focus:border-slate-400" />
+                            <input type="text" name="brandName" value={formData.brandName} onChange={handleChange} placeholder="Auto-fills in Orders" className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-sm focus:outline-none focus:border-slate-400" />
+                        </FormRow>
+                        <FormRow label="Default Box">
+                            <input type="text" name="defaultBox" value={formData.defaultBox} onChange={handleChange} placeholder="e.g. White Plain / Branded Box" className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-sm focus:outline-none focus:border-slate-400" />
                         </FormRow>
                         <FormRow label="GST No.">
                             <input type="text" name="gstNo" value={formData.gstNo} onChange={handleChange} className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-sm focus:outline-none focus:border-slate-400 uppercase" />
                         </FormRow>
 
-                        {/* Dynamic Group Selector */}
                         <FormRow label="Group" required>
                             <div className="flex gap-2">
                                 {!isAddingGroup ? (

@@ -22,44 +22,62 @@ export async function POST(req) {
         }
 
         const bom = await BOM.findOne({
-            finishedItemCode: { $regex: new RegExp(`^${finishedItemCode}$`, 'i') },
+            finishedItemCode: { $regex: new RegExp(`^${finishedItemCode.trim()}$`, 'i') },
             isActive: true
         });
+
         if (!bom) {
             return NextResponse.json({
                 finishedItemCode,
                 orderQuantity: quantity,
+                explodedInHouse: [],
                 explodedBOM: []
             }, { status: 200 });
         }
 
-        // Calculate (Explode) the BOM and fetch actual Material Names safely
-        const explodedComponents = await Promise.all(bom.components.map(async (comp) => {
-            let group = null;
-
-            // 1. Try to find the exact parent Inventory Group (Safest approach)
-            if (comp.inventoryGroupId) {
-                group = await InventoryGroup.findById(comp.inventoryGroupId);
+        // 1. Explode Left Side: In-House Factory Parts (For Process Module & Semi-Finished Inventory)
+        const explodedInHouse = await Promise.all((bom.inHouseParts || []).map(async (part) => {
+            let subItem = null;
+            if (part.inventorySubItemId) {
+                const grp = await InventoryGroup.findOne({ 'subItems._id': part.inventorySubItemId });
+                subItem = grp?.subItems?.find(i => i._id.toString() === part.inventorySubItemId.toString());
             }
+            const requiredPieces = (Number(part.qtyInPieces) || 1) * Number(quantity);
+            const totalWeightKg = Number(((requiredPieces * (Number(part.weightPerPcGrams) || 0)) / 1000).toFixed(3));
 
-            // 2. Fallback if the above fails: search the entire DB for the sub-item ID
-            if (!group) {
+            return {
+                fieldName: part.fieldName,
+                partCode: subItem?.itemCode || part.partCode || '-',
+                processName: part.processName || 'Factory Process',
+                qtyPerUnit: part.qtyInPieces,
+                requiredPieces,
+                totalWeightKg,
+                availableStock: subItem ? Number(subItem.stock || 0) : 0
+            };
+        }));
+
+        // 2. Explode Right Side: After-Market Requirements (For Inventory Module)
+        const explodedComponents = await Promise.all((bom.components || []).map(async (comp) => {
+            let group = comp.inventoryGroupId ? await InventoryGroup.findById(comp.inventoryGroupId) : null;
+            if (!group && comp.inventorySubItemId) {
                 group = await InventoryGroup.findOne({ 'subItems._id': comp.inventorySubItemId });
             }
 
-            // 3. Extract the item name and code safely
-            let subItem = null;
-            if (group && group.subItems) {
-                subItem = group.subItems.find(i => i._id.toString() === comp.inventorySubItemId.toString());
-            }
+            const subItem = group?.subItems?.find(
+                i => i._id.toString() === comp.inventorySubItemId?.toString()
+            );
+
+            const requiredQuantity = Number(comp.quantity) * Number(quantity);
+            const availableStock = subItem ? Number(subItem.stock || 0) : 0;
 
             return {
                 inventorySubItemId: comp.inventorySubItemId,
-                // If it can't find the item, it will now explicitly warn you
-                materialName: subItem ? subItem.name : "⚠ Material Deleted / Not Found",
+                materialName: subItem ? subItem.name : (comp.fieldName || "⚠ Material Not Found"),
                 materialCode: subItem ? subItem.itemCode : "-",
                 inventoryGroupId: comp.inventoryGroupId,
-                requiredQuantity: comp.quantity * quantity,
+                requiredQuantity,
+                availableStock,
+                shortfall: Math.max(0, requiredQuantity - availableStock),
                 unit: comp.unit,
                 remarks: comp.remarks
             };
@@ -68,9 +86,9 @@ export async function POST(req) {
         return NextResponse.json({
             finishedItemCode,
             orderQuantity: quantity,
+            explodedInHouse,
             explodedBOM: explodedComponents
         }, { status: 200 });
-
     } catch (error) {
         console.error("POST BOM calculate error:", error);
         return NextResponse.json({ error: "Failed to calculate BOM" }, { status: 500 });
