@@ -1,11 +1,16 @@
+// models/Inventory.js
 import mongoose from 'mongoose';
 
 const SubItemSchema = new mongoose.Schema({
-    itemCode: { type: String, required: true }, // e.g., RM-001, FG-050
+    itemCode: { type: String, required: true },
     name: { type: String, required: true },
-    category: { type: String, enum: ['Raw Material', 'Finished Good', 'Consumable', 'Component'], default: 'Raw Material' },
-    uom: { type: String, required: true, default: 'Pcs' }, // Unit of Measure
-    unitCost: { type: Number, default: 0 }, // Cost per unit for BOM and Valuation
+    category: {
+        type: String,
+        enum: ['Raw Material', 'Semi-Finished', 'After-Market', 'Finished Good', 'Consumable', 'Component'],
+        default: 'Raw Material'
+    },
+    uom: { type: String, required: true, default: 'Pcs' },
+    unitCost: { type: Number, default: 0 },
     details: { type: String },
     stock: { type: Number, default: 0 }
 });

@@ -74,7 +74,7 @@ export function AppLayout() {
             </aside>
 
             {/* Main Content Wrapper */}
-            <div className="flex-1 flex flex-col min-h-screen md:ml-64 w-full transition-all">
+            <div className="flex-1 flex flex-col min-h-screen md:ml-64 transition-all">
 
                 {/* Global Top Header */}
                 <header className="h-16 bg-white shadow-sm px-4 md:px-8 flex items-center justify-between sticky top-0 z-30">
