@@ -14,7 +14,7 @@ export const useCurrentUser = () => {
     return useQuery({
         queryKey: ['currentUser'],
         queryFn: () => userApi.getMe(),
-        staleTime: 30 * 1000, // Consider fresh for 30 seconds
+        staleTime: 10 * 1000,
     });
 };
 
@@ -33,9 +33,22 @@ export const useCreateUser = () => {
 export const useUpdatePermissions = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: ({ userId, permissions }) => userApi.updatePermissions(userId, permissions),
+        mutationFn: ({ userId, permissions }) => {
+            // Normalize BOM and bom so both keys are always kept identical in DB
+            const normalized = { ...permissions };
+            const bomPerms = Array.from(new Set([
+                ...(Array.isArray(normalized.BOM) ? normalized.BOM : []),
+                ...(Array.isArray(normalized.bom) ? normalized.bom : [])
+            ]));
+            if (normalized.BOM !== undefined || normalized.bom !== undefined) {
+                normalized.BOM = bomPerms;
+                normalized.bom = bomPerms;
+            }
+            return userApi.updatePermissions(userId, normalized);
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['users'] });
+            queryClient.invalidateQueries({ queryKey: ['currentUser'] });
         },
     });
 };

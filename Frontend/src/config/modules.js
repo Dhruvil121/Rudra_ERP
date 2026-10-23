@@ -47,7 +47,7 @@ export const ERP_MODULES = [
         path: '/process',
         icon: Settings,
         theme: 'green',
-        actions: ['view', 'add'],
+        actions: ['view', 'add', 'edit'],
     },
     {
         id: 'assembling',
@@ -87,15 +87,6 @@ export const ERP_MODULES = [
     }
 ];
 
-/**
- * Factory process step names — the master list used in both:
- * - Settings.jsx (permission assignment matrix)
- * - Process.jsx (step-level authorization checks)
- *
- * When super admin creates a custom step via the Process modal,
- * it gets permission-checked against this list. Custom steps not
- * in this list are only editable by super_admin.
- */
 export const FACTORY_PROCESSES = [
     "Cutting",
     "Drilling",

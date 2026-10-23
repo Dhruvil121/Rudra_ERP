@@ -34,12 +34,14 @@ const sanitizeBomPayload = (body) => {
 
 export async function GET() {
     try {
-        const authInv = await checkPermission("inventory", ACTIONS.VIEW);
-        const authOrder = await checkPermission("order", ACTIONS.VIEW);
-        const authProcess = await checkPermission("process", ACTIONS.VIEW);
+        let auth = await checkPermission("BOM", ACTIONS.VIEW);
+        if (!auth.authorized) auth = await checkPermission("bom", ACTIONS.VIEW);
+        if (!auth.authorized) auth = await checkPermission("inventory", ACTIONS.VIEW);
+        if (!auth.authorized) auth = await checkPermission("order", ACTIONS.VIEW);
+        if (!auth.authorized) auth = await checkPermission("process", ACTIONS.VIEW);
 
-        if (!authInv.authorized && !authOrder.authorized && !authProcess.authorized) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        if (!auth.authorized) {
+            return NextResponse.json({ error: auth.error }, { status: auth.status });
         }
 
         await dbConnect();
@@ -53,7 +55,10 @@ export async function GET() {
 
 export async function POST(req) {
     try {
-        const auth = await checkPermission("inventory", ACTIONS.ADD);
+        let auth = await checkPermission("BOM", ACTIONS.ADD);
+        if (!auth.authorized) auth = await checkPermission("bom", ACTIONS.ADD);
+        if (!auth.authorized) auth = await checkPermission("inventory", ACTIONS.ADD);
+
         if (!auth.authorized) {
             return NextResponse.json({ error: auth.error }, { status: auth.status });
         }

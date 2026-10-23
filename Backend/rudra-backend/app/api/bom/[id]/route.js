@@ -5,7 +5,10 @@ import { checkPermission, ACTIONS } from "../../../../lib/auth";
 
 export async function GET(req, { params }) {
     try {
-        const auth = await checkPermission("inventory", ACTIONS.VIEW);
+        let auth = await checkPermission("BOM", ACTIONS.VIEW);
+        if (!auth.authorized) auth = await checkPermission("bom", ACTIONS.VIEW);
+        if (!auth.authorized) auth = await checkPermission("inventory", ACTIONS.VIEW);
+
         if (!auth.authorized) {
             return NextResponse.json({ error: auth.error }, { status: auth.status });
         }
@@ -26,7 +29,12 @@ export async function GET(req, { params }) {
 
 export async function PUT(req, { params }) {
     try {
-        const auth = await checkPermission("inventory", ACTIONS.EDIT);
+        let auth = await checkPermission("BOM", ACTIONS.EDIT);
+        if (!auth.authorized) auth = await checkPermission("bom", ACTIONS.EDIT);
+        if (!auth.authorized) auth = await checkPermission("BOM", ACTIONS.ADD);
+        if (!auth.authorized) auth = await checkPermission("bom", ACTIONS.ADD);
+        if (!auth.authorized) auth = await checkPermission("inventory", ACTIONS.EDIT);
+
         if (!auth.authorized) {
             return NextResponse.json({ error: auth.error }, { status: auth.status });
         }
@@ -71,7 +79,10 @@ export async function PUT(req, { params }) {
 
 export async function DELETE(req, { params }) {
     try {
-        const auth = await checkPermission("inventory", ACTIONS.DELETE);
+        let auth = await checkPermission("BOM", ACTIONS.DELETE);
+        if (!auth.authorized) auth = await checkPermission("bom", ACTIONS.DELETE);
+        if (!auth.authorized) auth = await checkPermission("inventory", ACTIONS.DELETE);
+
         if (!auth.authorized) {
             return NextResponse.json({ error: auth.error }, { status: auth.status });
         }

@@ -6,11 +6,12 @@ import { checkPermission, ACTIONS } from "../../../../lib/auth";
 
 export async function POST(req) {
     try {
+        const authBom = await checkPermission('bom', ACTIONS.VIEW);
         const authInv = await checkPermission('inventory', ACTIONS.VIEW);
         const authOrder = await checkPermission('order', ACTIONS.VIEW);
         const authProcess = await checkPermission('process', ACTIONS.VIEW);
 
-        if (!authInv.authorized && !authOrder.authorized && !authProcess.authorized) {
+        if (!authBom.authorized && !authInv.authorized && !authOrder.authorized && !authProcess.authorized) {
             return NextResponse.json({ error: "Forbidden: Missing Permissions" }, { status: 403 });
         }
 

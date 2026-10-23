@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
     Search, Plus, Edit2, Trash2, ArrowLeft, Check, X, Printer,
-    CheckCircle, Package, Loader2, Factory, Building2
+    CheckCircle, Package, Loader2, Factory, Building2, AlertTriangle, Copy, Zap
 } from 'lucide-react';
 import { PermissionGuard } from '../components/auth/PermissionGuard';
 import { ACTIONS } from '../context/AuthContext';
@@ -66,103 +66,238 @@ const formatDisplayDate = (dateString) => {
     }
 };
 
+const PRIORITY_STYLES = {
+    urgent: { row: 'border-l-4 border-red-500 bg-red-50/30', badge: 'bg-red-100 text-red-700', label: 'URGENT' },
+    mixed: { row: 'border-l-4 border-amber-400 bg-amber-50/20', badge: 'bg-amber-100 text-amber-700', label: 'MIXED (URGENT SPLIT)' },
+    normal: { row: '', badge: '', label: '' },
+};
+
+const STATUS_STYLES = {
+    Pending: 'bg-yellow-100 text-yellow-700',
+    Approved: 'bg-green-100 text-green-700',
+    Dispatched: 'bg-blue-100 text-blue-700',
+};
+
 // ==========================================
-// 1. LIST VIEW
+// 1. LIST VIEW (With Urgent Stack Counter & Color Hierarchy)
 // ==========================================
 function OrderList({ orders, onNavigate }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All Status');
+    const [priorityFilter, setPriorityFilter] = useState('All Priority');
 
-    const filteredOrders = orders?.filter(order => {
-        const term = searchTerm.toLowerCase();
-        const matchesSearch =
-            !searchTerm ||
-            order.piNo?.toLowerCase().includes(term) ||
-            order.name?.toLowerCase().includes(term) ||
-            order.partyCode?.toLowerCase().includes(term);
-        const matchesStatus = statusFilter === 'All Status' || order.status === statusFilter;
-        return matchesSearch && matchesStatus;
-    });
+    // Calculate Urgent Stack vs Normal Pieces across active orders
+    const urgentStats = useMemo(() => {
+        let urgentOrdersCount = 0;
+        let urgentPcs = 0;
+        let normalPcs = 0;
+
+        (orders || []).forEach(o => {
+            if (o.status === 'Dispatched') return;
+            if (o.orderPriority === 'urgent' || o.orderPriority === 'mixed') {
+                urgentOrdersCount++;
+            }
+            (o.items || []).forEach(i => {
+                const q = Number(i.qty || 0);
+                if (i.priority === 'urgent') urgentPcs += q;
+                else normalPcs += q;
+            });
+        });
+
+        return { urgentOrdersCount, urgentPcs, normalPcs };
+    }, [orders]);
+
+    const filteredOrders = orders
+        ?.filter(order => {
+            const term = searchTerm.toLowerCase();
+            const matchesSearch =
+                !searchTerm ||
+                order.piNo?.toLowerCase().includes(term) ||
+                order.name?.toLowerCase().includes(term) ||
+                order.partyCode?.toLowerCase().includes(term) ||
+                order.items?.some(i => i.rudraCode?.toLowerCase().includes(term));
+            const matchesStatus = statusFilter === 'All Status' || order.status === statusFilter;
+            const matchesPriority =
+                priorityFilter === 'All Priority' ||
+                (priorityFilter === 'Urgent Stack'
+                    ? order.orderPriority === 'urgent' || order.orderPriority === 'mixed'
+                    : order.orderPriority === priorityFilter.toLowerCase());
+            return matchesSearch && matchesStatus && matchesPriority;
+        })
+        ?.sort((a, b) => {
+            const priorityOrder = { urgent: 0, mixed: 1, normal: 2 };
+            return (priorityOrder[a.orderPriority] ?? 2) - (priorityOrder[b.orderPriority] ?? 2);
+        });
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-7xl mx-auto pb-12">
             <div className="flex justify-between items-center pb-4 border-b border-slate-200">
                 <div>
                     <h1 className="text-xl font-bold text-slate-800">Orders (PI)</h1>
                     <p className="text-sm text-slate-500">
-                        Proforma Invoices <span className="text-slate-400 ml-1">{orders.length} total</span>
+                        Proforma Invoices & Urgent Dispatch Stack <span className="text-slate-400 ml-1">{orders.length} total</span>
                     </p>
                 </div>
                 <PermissionGuard module="order" action={ACTIONS.ADD}>
                     <button
                         onClick={() => onNavigate('form')}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
                     >
                         <Plus className="w-4 h-4" /> New Order (PI)
                     </button>
                 </PermissionGuard>
             </div>
 
-            <div className="flex justify-between items-center bg-white p-3 rounded-md shadow-sm border border-slate-100">
-                <div className="flex items-center gap-4 flex-1">
+            {/* Urgent Stack Banner (Problem 1: Shows Urgent Required Pcs vs Normal Pcs) */}
+            {urgentStats.urgentPcs > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-red-600 text-white rounded-lg animate-pulse">
+                            <AlertTriangle className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-bold text-red-800 uppercase tracking-wider">
+                                🔴 Urgent Priority Stack ("Pehla Maal" Requirements)
+                            </h3>
+                            <p className="text-xs text-red-700 font-medium">
+                                <strong>{urgentStats.urgentPcs} Pieces</strong> required urgently across{' '}
+                                <strong>{urgentStats.urgentOrdersCount} active order(s)</strong> • Remaining Normal Queue:{' '}
+                                <strong>{urgentStats.normalPcs} Pieces</strong>
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() =>
+                            setPriorityFilter(
+                                priorityFilter === 'Urgent Stack' ? 'All Priority' : 'Urgent Stack'
+                            )
+                        }
+                        className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-colors ${priorityFilter === 'Urgent Stack'
+                                ? 'bg-red-700 text-white'
+                                : 'bg-white text-red-700 border border-red-300 hover:bg-red-100'
+                            }`}
+                    >
+                        {priorityFilter === 'Urgent Stack' ? 'Show All Orders' : 'Filter Urgent Stack Only'}
+                    </button>
+                </div>
+            )}
+
+            <div className="flex flex-wrap justify-between items-center gap-4 bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+                <div className="flex flex-wrap items-center gap-3 flex-1">
                     <div className="relative w-72">
                         <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Search PI No, Party Code, Customer..."
+                            placeholder="Search PI No, Party Code, Rudra Code..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-3 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none focus:border-slate-400"
+                            className="w-full pl-9 pr-3 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-500"
                         />
                     </div>
                     <select
-                        className="py-1.5 px-3 text-sm bg-slate-50 border border-slate-200 rounded focus:outline-none"
+                        className="py-1.5 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
                     >
                         <option>All Status</option>
                         <option>Pending</option>
                         <option>Approved</option>
+                        <option>Dispatched</option>
+                    </select>
+                    <select
+                        className="py-1.5 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                        value={priorityFilter}
+                        onChange={(e) => setPriorityFilter(e.target.value)}
+                    >
+                        <option>All Priority</option>
+                        <option>Urgent Stack</option>
+                        <option>Urgent</option>
+                        <option>Mixed</option>
+                        <option>Normal</option>
                     </select>
                 </div>
             </div>
 
-            <div className="bg-white rounded-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <table className="w-full text-left border-collapse">
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            <th className="p-4 w-8"></th>
                             <th className="p-4">PI No.</th>
                             <th className="p-4">Party Code</th>
                             <th className="p-4">Customer Name</th>
+                            <th className="p-4">Products & Sizes</th>
+                            <th className="p-4 text-center">Urgent / Normal Breakdown</th>
                             <th className="p-4">Date</th>
-                            <th className="p-4">City</th>
                             <th className="p-4">Status</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {filteredOrders?.map((order) => (
-                            <tr
-                                key={order._id}
-                                onClick={() => onNavigate('detail', order)}
-                                className="hover:bg-slate-50 transition-colors cursor-pointer"
-                            >
-                                <td className="p-4 font-semibold text-blue-600">{order.piNo || 'N/A'}</td>
-                                <td className="p-4 text-xs font-bold text-indigo-600">{order.partyCode || '-'}</td>
-                                <td className="p-4 text-sm font-medium text-slate-800">{order.name}</td>
-                                <td className="p-4 text-sm text-slate-600">{formatDisplayDate(order.date)}</td>
-                                <td className="p-4 text-sm text-slate-600">{order.city || '-'}</td>
-                                <td className="p-4">
-                                    <span
-                                        className={`px-2 py-1 text-xs font-bold rounded-sm uppercase tracking-wide ${order.status === 'Approved'
-                                                ? 'bg-green-100 text-green-700'
-                                                : 'bg-yellow-100 text-yellow-700'
-                                            }`}
-                                    >
-                                        {order.status}
-                                    </span>
+                        {filteredOrders?.map((order) => {
+                            const pStyle = PRIORITY_STYLES[order.orderPriority] || PRIORITY_STYLES.normal;
+                            const urgentQty = (order.items || [])
+                                .filter(i => i.priority === 'urgent')
+                                .reduce((a, i) => a + Number(i.qty || 0), 0);
+                            const normalQty = (order.items || [])
+                                .filter(i => i.priority !== 'urgent')
+                                .reduce((a, i) => a + Number(i.qty || 0), 0);
+
+                            return (
+                                <tr
+                                    key={order._id}
+                                    onClick={() => onNavigate('detail', order)}
+                                    className={`hover:bg-slate-50 transition-colors cursor-pointer ${pStyle.row}`}
+                                >
+                                    <td className="p-4 text-center">
+                                        {order.orderPriority === 'urgent' && <AlertTriangle className="w-4 h-4 text-red-500 animate-pulse" />}
+                                        {order.orderPriority === 'mixed' && <AlertTriangle className="w-4 h-4 text-amber-500" />}
+                                    </td>
+                                    <td className="p-4 font-bold text-blue-600">{order.piNo || 'N/A'}</td>
+                                    <td className="p-4 text-xs font-bold text-indigo-600">{order.partyCode || '-'}</td>
+                                    <td className="p-4 text-sm font-semibold text-slate-800">{order.name}</td>
+                                    <td className="p-4 text-xs font-semibold text-slate-600">
+                                        {(order.items || [])
+                                            .map(i => `${i.rudraCode}${i.size ? ` (${i.size})` : ''}`)
+                                            .filter(Boolean)
+                                            .join(', ') || '-'}
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                            {urgentQty > 0 && (
+                                                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full">
+                                                    🔴 {urgentQty} Urgent
+                                                </span>
+                                            )}
+                                            {normalQty > 0 && (
+                                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
+                                                    {normalQty} Normal
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-sm text-slate-600">{formatDisplayDate(order.date)}</td>
+                                    <td className="p-4">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={`px-2 py-1 text-xs font-bold rounded-full uppercase tracking-wide ${STATUS_STYLES[order.status] || 'bg-yellow-100 text-yellow-700'}`}>
+                                                {order.status}
+                                            </span>
+                                            {pStyle.label && (
+                                                <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wide ${pStyle.badge}`}>
+                                                    {pStyle.label}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                        {filteredOrders?.length === 0 && (
+                            <tr>
+                                <td colSpan={8} className="p-12 text-center text-slate-400">
+                                    No orders match your filter criteria.
                                 </td>
                             </tr>
-                        ))}
+                        )}
                     </tbody>
                 </table>
             </div>
@@ -171,7 +306,7 @@ function OrderList({ orders, onNavigate }) {
 }
 
 // ==========================================
-// 2. DETAIL VIEW (With Split BOM Breakdown)
+// 2. DETAIL VIEW (With Urgent Split Banner & Split BOM Breakdown)
 // ==========================================
 function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
     const { showConfirm, showToast } = useFeedback();
@@ -233,7 +368,7 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                     </button>
 
                     <PermissionGuard module="order" action={ACTIONS.APPROVE}>
-                        {order.status !== 'Approved' && (
+                        {order.status === 'Pending' && (
                             <button
                                 onClick={handleApprove}
                                 disabled={isApproving}
@@ -256,6 +391,28 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                 </div>
             </div>
 
+            {order.orderPriority && order.orderPriority !== 'normal' && (
+                <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border ${order.orderPriority === 'urgent'
+                        ? 'bg-red-50 border-red-200'
+                        : 'bg-amber-50 border-amber-200'
+                    }`}>
+                    <AlertTriangle className={`w-5 h-5 shrink-0 ${order.orderPriority === 'urgent' ? 'text-red-500 animate-pulse' : 'text-amber-500'
+                        }`} />
+                    <div>
+                        <span className={`text-sm font-bold ${order.orderPriority === 'urgent' ? 'text-red-700' : 'text-amber-700'
+                            }`}>
+                            {order.orderPriority === 'urgent' ? '🔴 URGENT ORDER' : '⚡ PRIORITY SPLIT ORDER (PEHLA MAAL)'}
+                        </span>
+                        <span className="text-xs text-slate-600 ml-2 font-medium">
+                            Urgent Required: {order.items?.filter(i => i.priority === 'urgent').reduce((a, i) => a + Number(i.qty || 0), 0)} Pcs
+                            ({order.items?.filter(i => i.priority === 'urgent').length} batch)
+                            {order.orderPriority === 'mixed' &&
+                                ` • Normal Remaining: ${order.items?.filter(i => i.priority !== 'urgent').reduce((a, i) => a + Number(i.qty || 0), 0)} Pcs`}
+                        </span>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white rounded-sm border border-slate-200">
                 <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
                     <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Order Information</h2>
@@ -272,32 +429,40 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
 
             <div className="bg-white rounded-sm border border-slate-200 overflow-hidden">
                 <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-                    <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Line Items</h2>
+                    <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Line Items (Urgent & Multi-Size Batches)</h2>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-white border-b border-slate-200 text-xs font-semibold text-slate-500">
                                 <th className="p-3 w-12 text-center">#</th>
+                                <th className="p-3 w-24">Priority</th>
                                 <th className="p-3">Rudra Code</th>
                                 <th className="p-3">Party Item Code</th>
                                 <th className="p-3">Finishing</th>
                                 <th className="p-3">Color</th>
                                 <th className="p-3">HSN/SAC</th>
-                                <th className="p-3">Size</th>
+                                <th className="p-3">Size Variant</th>
                                 <th className="p-3 text-right">Set (Qty)</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {order.items?.map((item, index) => (
-                                <tr key={item._id || item.id || index} className="hover:bg-slate-50">
+                                <tr key={item._id || item.id || index} className={`hover:bg-slate-50 ${item.priority === 'urgent' ? 'bg-red-50/40 border-l-4 border-red-500' : ''}`}>
                                     <td className="p-3 text-center text-slate-400 text-sm">{index + 1}</td>
+                                    <td className="p-3">
+                                        {item.priority === 'urgent' ? (
+                                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">🔴 Urgent</span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-semibold rounded-full uppercase">Normal</span>
+                                        )}
+                                    </td>
                                     <td className="p-3 text-sm font-bold text-indigo-600">{item.rudraCode}</td>
                                     <td className="p-3 text-sm font-semibold text-slate-700">{item.partyCode || '-'}</td>
                                     <td className="p-3 text-sm text-slate-600">{item.finishing}</td>
                                     <td className="p-3 text-sm text-slate-600">{item.color}</td>
                                     <td className="p-3 text-sm text-slate-600">{item.hsnSac}</td>
-                                    <td className="p-3 text-sm text-slate-600">{item.size}</td>
+                                    <td className="p-3 text-sm font-bold text-blue-700">{item.size || '-'}</td>
                                     <td className="p-3 text-sm font-bold text-slate-800 text-right">{item.qty}</td>
                                 </tr>
                             ))}
@@ -308,7 +473,6 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
 
             {showBOM && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* Left: In-House Factory Parts (Process Module) */}
                     <div className="bg-white rounded-sm border border-blue-200 overflow-hidden shadow-sm">
                         <div className="px-4 py-3 border-b border-blue-100 bg-blue-50 flex items-center gap-2">
                             <Factory className="w-4 h-4 text-blue-600" />
@@ -348,7 +512,6 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                         </div>
                     </div>
 
-                    {/* Right: After-Market Requirements (Inventory Module) */}
                     <div className="bg-white rounded-sm border border-emerald-200 overflow-hidden shadow-sm">
                         <div className="px-4 py-3 border-b border-emerald-100 bg-emerald-50 flex items-center gap-2">
                             <Package className="w-4 h-4 text-emerald-600" />
@@ -416,9 +579,9 @@ const InfoRow = ({ label, value }) => (
 );
 
 // ==========================================
-// 3. FORM VIEW (Code Auto-Complete + Quick-Add Modals)
+// 3. FORM VIEW (With 1-Click Urgent Split & + Size Variant Duplicator)
 // ==========================================
-const INITIAL_ITEM = { id: '', rudraCode: '', partyCode: '', finishing: '', color: '', hsnSac: '', size: '', qty: '' };
+const INITIAL_ITEM = { id: '', rudraCode: '', partyCode: '', finishing: '', color: '', hsnSac: '', size: '', qty: '', priority: 'normal' };
 const generateRowId = () => Math.random().toString(36).substring(2, 10);
 
 function OrderForm({ order, orders = [], onNavigate, onSave }) {
@@ -452,11 +615,19 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                 box: '',
                 city: '',
                 remarks: '',
+                orderPriority: 'normal',
                 items: [{ ...INITIAL_ITEM, id: generateRowId() }]
             }
     );
 
-    // Quick-Add Customer Modal State
+    // Urgent Split Modal State (e.g., Split 150 pcs into 20 Urgent + 130 Normal)
+    const [splitModal, setSplitModal] = useState({
+        open: false,
+        rowId: null,
+        totalQty: 0,
+        urgentQty: ''
+    });
+
     const [showCustomerModal, setShowCustomerModal] = useState(false);
     const [newCustomer, setNewCustomer] = useState({
         partyCode: '',
@@ -468,7 +639,6 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
         group: 'sundry_debtors'
     });
 
-    // Quick-Add Product (Rudra Code) Modal State
     const [productModal, setProductModal] = useState({
         open: false,
         rowId: null,
@@ -478,7 +648,6 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
         finishing: ''
     });
 
-    // Build combined Rudra Code suggestions from BOMs + Inventory
     const productSuggestions = useMemo(() => {
         const map = new Map();
         boms.forEach(b => {
@@ -506,7 +675,6 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
         return Array.from(map.values());
     }, [boms, inventory]);
 
-    // Auto-fill Customer Details when Party Code or Customer Name is selected
     const handleSelectCustomer = (value, byField = 'partyCode') => {
         const match = customers.find(c =>
             byField === 'partyCode'
@@ -538,7 +706,6 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                 if ((item._id || item.id) !== id) return item;
                 const updated = { ...item, [field]: value };
 
-                // If Rudra Code is entered, auto-fill specs from BOM/Inventory & past client history
                 if (field === 'rudraCode') {
                     const cleanCode = value.toUpperCase();
                     updated.rudraCode = cleanCode;
@@ -548,7 +715,6 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                         if (!updated.finishing && spec.finishing) updated.finishing = spec.finishing;
                         if (!updated.hsnSac && spec.hsnSac) updated.hsnSac = spec.hsnSac;
                     }
-                    // Look up client's historical party item code for this Rudra Code
                     if (formData.name || formData.partyCode) {
                         const pastOrder = orders.find(
                             o =>
@@ -564,6 +730,69 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                 return updated;
             })
         }));
+    };
+
+    // Problem 2: Duplicate Row to Add Another Size Variant (e.g., 4mm, 6mm, 8mm)
+    const handleAddSizeVariant = (sourceItem) => {
+        const sourceId = sourceItem._id || sourceItem.id;
+        const newVariantRow = {
+            ...sourceItem,
+            _id: undefined,
+            id: generateRowId(),
+            size: '',
+            qty: ''
+        };
+        setFormData(prev => {
+            const idx = prev.items.findIndex(i => (i._id || i.id) === sourceId);
+            const nextItems = [...prev.items];
+            nextItems.splice(idx + 1, 0, newVariantRow);
+            return { ...prev, items: nextItems };
+        });
+        showToast(`Added new size row for ${sourceItem.rudraCode || 'item'}. Enter the new Size & Qty.`, 'info');
+    };
+
+    // Problem 1: Confirm Urgent Split (e.g., 150 pcs -> 20 Urgent + 130 Normal)
+    const handleConfirmUrgentSplit = () => {
+        const total = Number(splitModal.totalQty || 0);
+        const urgent = Number(splitModal.urgentQty || 0);
+
+        if (urgent <= 0 || urgent >= total) {
+            showToast(`Enter an urgent quantity between 1 and ${total - 1}`, 'warning');
+            return;
+        }
+
+        const normalRemaining = total - urgent;
+
+        setFormData(prev => {
+            const idx = prev.items.findIndex(i => (i._id || i.id) === splitModal.rowId);
+            if (idx === -1) return prev;
+
+            const targetItem = prev.items[idx];
+            const urgentRow = {
+                ...targetItem,
+                qty: String(urgent),
+                priority: 'urgent'
+            };
+            const normalRow = {
+                ...targetItem,
+                _id: undefined,
+                id: generateRowId(),
+                qty: String(normalRemaining),
+                priority: 'normal'
+            };
+
+            const nextItems = [...prev.items];
+            nextItems.splice(idx, 1, urgentRow, normalRow);
+
+            return {
+                ...prev,
+                orderPriority: 'mixed',
+                items: nextItems
+            };
+        });
+
+        showToast(`Split into ${urgent} Pcs (🔴 Urgent) + ${normalRemaining} Pcs (Normal)!`, 'success');
+        setSplitModal({ open: false, rowId: null, totalQty: 0, urgentQty: '' });
     };
 
     const handleCreateQuickCustomer = async () => {
@@ -638,7 +867,7 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
     };
 
     return (
-        <div className="space-y-4 max-w-6xl mx-auto pb-12">
+        <div className="space-y-4 max-w-7xl mx-auto pb-12">
             <div className="flex justify-between items-center bg-white px-4 py-3 rounded-t-md border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                 <div className="flex items-center gap-2 text-sm">
                     <button onClick={() => onNavigate(isEditing ? 'detail' : 'list', order)} className="text-slate-400 hover:text-slate-600">
@@ -665,7 +894,6 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                 </div>
             </div>
 
-            {/* Order Header with Code-Based Customer Lookup & + Button */}
             <div className="bg-white rounded-sm border border-slate-200">
                 <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                     <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
@@ -691,7 +919,7 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                     </button>
                 </div>
 
-                <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
                     <div>
                         <label className="text-sm font-medium text-slate-500 block mb-1.5">Party Code (Client Code)</label>
                         <div className="flex gap-1.5">
@@ -745,35 +973,72 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                     <FormInput label="Brand Name" name="brandName" value={formData.brandName} onChange={(e) => setFormData(p => ({ ...p, brandName: e.target.value }))} />
                     <FormInput label="Box" name="box" value={formData.box} onChange={(e) => setFormData(p => ({ ...p, box: e.target.value }))} />
                     <FormInput label="City" name="city" value={formData.city} onChange={(e) => setFormData(p => ({ ...p, city: e.target.value }))} />
+                    <div>
+                        <label className="text-sm font-medium text-slate-500 block mb-1.5">Order Priority</label>
+                        <select
+                            value={formData.orderPriority || 'normal'}
+                            onChange={(e) => {
+                                const newPriority = e.target.value;
+                                setFormData(p => ({
+                                    ...p,
+                                    orderPriority: newPriority,
+                                    items: newPriority !== 'mixed' ? p.items.map(item => ({ ...item, priority: newPriority })) : p.items
+                                }));
+                            }}
+                            className={`w-full px-3 py-1.5 text-sm font-bold border rounded-sm focus:outline-none ${(formData.orderPriority || 'normal') === 'urgent'
+                                    ? 'border-red-300 bg-red-50 text-red-700'
+                                    : 'border-slate-200 text-slate-700'
+                                }`}
+                        >
+                            <option value="normal">Normal</option>
+                            <option value="urgent">🔴 Urgent (All Items)</option>
+                            <option value="mixed">⚡ Mixed (Split Urgent + Normal)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
-            {/* Line Items with Smart Rudra Code Suggestions & + Button */}
+            {/* Line Items Table with "⚡ Split Urgent" and "+ Size" Variant Buttons */}
             <div className="bg-white rounded-sm border border-slate-200 overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                    <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Line Items</h2>
+                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex flex-wrap justify-between items-center gap-2">
+                    <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                        Line Items (Use "⚡ Split" for Urgent Partial Qty & "+ Size" for Multi-Size Variants)
+                    </h2>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-white border-b border-slate-200 text-xs font-semibold text-slate-500">
-                                <th className="p-3 w-10 text-center">#</th>
-                                <th className="p-3 w-48">Rudra Code (Factory)</th>
+                                <th className="p-3 w-8 text-center">#</th>
+                                <th className="p-3 w-24 text-center">Priority</th>
+                                <th className="p-3 w-44">Rudra Code (Factory)</th>
                                 <th className="p-3">Party Item Code</th>
                                 <th className="p-3">Finishing</th>
                                 <th className="p-3">Color</th>
-                                <th className="p-3">HSN/SAC</th>
-                                <th className="p-3">Size</th>
+                                <th className="p-3 w-24">HSN/SAC</th>
+                                <th className="p-3 w-28">Size</th>
                                 <th className="p-3 w-28">Set (Qty)</th>
-                                <th className="p-3 w-10 text-center">Act</th>
+                                <th className="p-3 w-40 text-center">Quick Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {formData.items.map((item, index) => {
                                 const rowId = item._id || item.id;
                                 return (
-                                    <tr key={rowId} className="hover:bg-slate-50">
-                                        <td className="p-3 text-center text-slate-400 text-sm font-medium">{index + 1}</td>
+                                    <tr key={rowId} className={`hover:bg-slate-50 ${item.priority === 'urgent' ? 'bg-red-50/40 border-l-4 border-red-500' : ''}`}>
+                                        <td className="p-2 text-center text-slate-400 text-sm font-medium">{index + 1}</td>
+                                        <td className="p-2 text-center">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleItemChange(rowId, 'priority', item.priority === 'urgent' ? 'normal' : 'urgent')}
+                                                className={`px-2 py-1 text-[10px] font-bold rounded-sm uppercase transition-all ${item.priority === 'urgent'
+                                                        ? 'bg-red-100 text-red-700 ring-1 ring-red-300 animate-pulse'
+                                                        : 'bg-slate-100 text-slate-500 hover:bg-amber-50 hover:text-amber-600'
+                                                    }`}
+                                            >
+                                                {item.priority === 'urgent' ? '🔴 Urgent' : 'Normal'}
+                                            </button>
+                                        </td>
                                         <td className="p-2">
                                             <div className="flex gap-1">
                                                 <input
@@ -807,27 +1072,63 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                                             <td key={col} className="p-2">
                                                 <input
                                                     type={col === 'qty' ? 'number' : 'text'}
+                                                    placeholder={col === 'size' ? 'e.g. 4mm / 6"' : ''}
                                                     value={item[col] || ''}
                                                     onChange={(e) => handleItemChange(rowId, col, e.target.value)}
-                                                    className="w-full px-2 py-1.5 text-sm bg-white border border-slate-200 rounded-sm focus:outline-none"
+                                                    className={`w-full px-2 py-1.5 text-sm bg-white border border-slate-200 rounded-sm focus:outline-none ${col === 'size' ? 'font-bold text-blue-700' : col === 'qty' ? 'font-bold text-slate-800' : ''
+                                                        }`}
                                                 />
                                             </td>
                                         ))}
-                                        <td className="p-3 text-center">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (formData.items.length === 1) return;
-                                                    setFormData(p => ({
-                                                        ...p,
-                                                        items: p.items.filter(i => (i._id || i.id) !== rowId)
-                                                    }));
-                                                }}
-                                                disabled={formData.items.length === 1}
-                                                className="p-1.5 text-slate-400 hover:text-red-500 rounded disabled:opacity-50"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                        <td className="p-2 text-center">
+                                            <div className="flex items-center justify-center gap-1">
+                                                {/* 1-Click Urgent Split Button (Problem 1) */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const q = Number(item.qty || 0);
+                                                        if (q <= 1) {
+                                                            showToast('Enter a quantity greater than 1 first (e.g. 150) to split urgent pieces.', 'warning');
+                                                            return;
+                                                        }
+                                                        setSplitModal({
+                                                            open: true,
+                                                            rowId,
+                                                            totalQty: q,
+                                                            urgentQty: ''
+                                                        });
+                                                    }}
+                                                    title="Split Urgent Quantity (e.g. 20 Urgent + 130 Normal)"
+                                                    className="px-2 py-1 bg-red-50 text-red-600 hover:bg-red-100 text-[10px] font-bold rounded flex items-center gap-0.5"
+                                                >
+                                                    <Zap className="w-3 h-3" /> Split
+                                                </button>
+
+                                                {/* 1-Click Add Size Variant Button (Problem 2) */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleAddSizeVariant(item)}
+                                                    title="Add another size for this Rudra Code"
+                                                    className="px-2 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 text-[10px] font-bold rounded flex items-center gap-0.5"
+                                                >
+                                                    <Copy className="w-3 h-3" /> +Size
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (formData.items.length === 1) return;
+                                                        setFormData(p => ({
+                                                            ...p,
+                                                            items: p.items.filter(i => (i._id || i.id) !== rowId)
+                                                        }));
+                                                    }}
+                                                    disabled={formData.items.length === 1}
+                                                    className="p-1 text-slate-400 hover:text-red-500 rounded disabled:opacity-40"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 );
@@ -853,7 +1154,7 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                         }
                         className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-sm"
                     >
-                        <Plus className="w-4 h-4" /> Add Row
+                        <Plus className="w-4 h-4" /> Add New Item Row
                     </button>
                 </div>
             </div>
@@ -868,6 +1169,65 @@ function OrderForm({ order, orders = [], onNavigate, onSave }) {
                     className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-sm focus:outline-none resize-none"
                 />
             </div>
+
+            {/* Urgent Split Modal ("Pehla Maal" — e.g., 150 pcs -> 20 Urgent + 130 Normal) */}
+            {splitModal.open && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+                        <div className="px-6 py-4 bg-red-600 text-white flex justify-between items-center">
+                            <h3 className="font-bold text-base flex items-center gap-2">
+                                <Zap className="w-4 h-4" /> Split Urgent Quantity ("Pehla Maal")
+                            </h3>
+                            <button onClick={() => setSplitModal({ open: false, rowId: null, totalQty: 0, urgentQty: '' })}>
+                                <X className="w-5 h-5 text-red-200 hover:text-white" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-slate-600">
+                                Total Row Quantity: <strong className="text-slate-900">{splitModal.totalQty} Pcs</strong>.
+                                How many pieces does the client need in <strong>Urgent</strong> dispatch?
+                            </p>
+                            <div>
+                                <label className="text-xs font-bold text-red-600 uppercase block mb-1.5">
+                                    Urgent Required Quantity *
+                                </label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max={splitModal.totalQty - 1}
+                                    value={splitModal.urgentQty}
+                                    onChange={(e) => setSplitModal(p => ({ ...p, urgentQty: e.target.value }))}
+                                    placeholder={`e.g. 20 (Remaining ${splitModal.totalQty - Number(splitModal.urgentQty || 0)} will be Normal)`}
+                                    className="w-full px-3 py-2 text-sm font-bold border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
+                                    autoFocus
+                                />
+                            </div>
+                            {Number(splitModal.urgentQty) > 0 && Number(splitModal.urgentQty) < splitModal.totalQty && (
+                                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex justify-between text-xs font-bold">
+                                    <span className="text-red-600">🔴 Urgent Batch: {splitModal.urgentQty} Pcs</span>
+                                    <span className="text-slate-700">Normal Batch: {splitModal.totalQty - Number(splitModal.urgentQty)} Pcs</span>
+                                </div>
+                            )}
+                            <div className="pt-2 flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSplitModal({ open: false, rowId: null, totalQty: 0, urgentQty: '' })}
+                                    className="px-4 py-2 border rounded-lg text-sm font-medium"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmUrgentSplit}
+                                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold"
+                                >
+                                    Split into Urgent & Normal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Quick-Add Customer Modal */}
             {showCustomerModal && (

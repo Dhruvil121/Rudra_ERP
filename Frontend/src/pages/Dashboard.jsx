@@ -93,17 +93,17 @@ export default function DashboardModule({ onNavigate }) {
     );
 
     return (
-        <div className="w-full">
-            <div className="space-y-4 max-w-7xl mx-auto">
+        <div className="w-full max-w-full min-w-0">
+            <div className="space-y-4 max-w-7xl mx-auto w-full max-w-full min-w-0">
                 {/* Top Header — Matches BOM Layout */}
-                <div className="flex justify-between items-center pb-4 border-b border-slate-200">
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 bg-indigo-100 text-indigo-600 rounded-xl">
-                            <LayoutDashboard className="w-6 h-6" />
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200 w-full max-w-full">
+                    <div className="flex items-center gap-3 min-w-0 max-w-full">
+                        <div className="p-2.5 sm:p-3 bg-indigo-100 text-indigo-600 rounded-xl shrink-0">
+                            <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>
-                        <div>
-                            <h1 className="text-xl font-bold text-slate-800">Overview & Factory Metrics</h1>
-                            <p className="text-sm text-slate-500">
+                        <div className="min-w-0 flex-1">
+                            <h1 className="text-lg sm:text-xl font-bold text-slate-800 break-words">Overview & Factory Metrics</h1>
+                            <p className="text-xs sm:text-sm text-slate-500 break-words">
                                 Live Orders, BOM Recipes, Active Manufacturing & Inventory Valuation
                             </p>
                         </div>
@@ -112,15 +112,15 @@ export default function DashboardModule({ onNavigate }) {
                     <button
                         onClick={() => refetch()}
                         disabled={isFetching}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition-colors"
+                        className="flex items-center justify-center gap-2 px-3.5 sm:px-4 py-2 bg-indigo-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition-colors shrink-0 self-start sm:self-auto"
                     >
-                        <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isFetching ? 'animate-spin' : ''}`} />
                         Refresh Metrics
                     </button>
                 </div>
 
                 {/* KPI Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 w-full max-w-full">
                     <KpiCard
                         title="Total Customers"
                         value={totalCustomers}
@@ -172,8 +172,8 @@ export default function DashboardModule({ onNavigate }) {
                 </div>
 
                 {/* Full-Width White Search & Tabs Bar — Matches BOM Layout */}
-                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
-                    <div className="relative w-80">
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 w-full max-w-full">
+                    <div className="relative w-full sm:w-80">
                         <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                         <input
                             type="text"
@@ -188,11 +188,11 @@ export default function DashboardModule({ onNavigate }) {
                         />
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
+                    <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2 w-full sm:w-auto min-w-0">
+                        <div className="flex gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto max-w-full min-w-0">
                             <button
                                 onClick={() => setActiveTab('orders')}
-                                className={`px-4 py-1.5 rounded-md font-semibold text-xs transition-all ${activeTab === 'orders'
+                                className={`px-2.5 sm:px-4 py-1.5 rounded-md font-semibold text-xs transition-all shrink-0 ${activeTab === 'orders'
                                     ? 'bg-white text-indigo-600 shadow-sm'
                                     : 'text-slate-500 hover:text-slate-700'
                                     }`}
@@ -201,7 +201,7 @@ export default function DashboardModule({ onNavigate }) {
                             </button>
                             <button
                                 onClick={() => setActiveTab('stock')}
-                                className={`px-4 py-1.5 rounded-md font-semibold text-xs transition-all ${activeTab === 'stock'
+                                className={`px-2.5 sm:px-4 py-1.5 rounded-md font-semibold text-xs transition-all shrink-0 ${activeTab === 'stock'
                                     ? 'bg-white text-indigo-600 shadow-sm'
                                     : 'text-slate-500 hover:text-slate-700'
                                     }`}
@@ -213,7 +213,7 @@ export default function DashboardModule({ onNavigate }) {
                         {onNavigate && (
                             <button
                                 onClick={() => onNavigate(activeTab === 'orders' ? 'order' : 'inventory')}
-                                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 px-3 py-2"
+                                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 px-2.5 py-1.5 shrink-0 ml-auto sm:ml-0"
                             >
                                 View All <ArrowRight className="w-3.5 h-3.5" />
                             </button>
@@ -223,112 +223,116 @@ export default function DashboardModule({ onNavigate }) {
 
                 {/* Full-Width Table — Matches BOM Layout */}
                 {activeTab === 'orders' ? (
-                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                    <th className="p-4">PI No.</th>
-                                    <th className="p-4">Party Code</th>
-                                    <th className="p-4">Customer Name</th>
-                                    <th className="p-4">Rudra Code(s)</th>
-                                    <th className="p-4 text-center">Total Qty</th>
-                                    <th className="p-4">Date</th>
-                                    <th className="p-4">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {recentOrders.map((order) => {
-                                    const totalQty = (order.items || []).reduce(
-                                        (sum, item) => sum + Number(item.qty || 0),
-                                        0
-                                    );
-                                    const codes = (order.items || [])
-                                        .map(i => i.rudraCode)
-                                        .filter(Boolean)
-                                        .join(', ');
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm w-full max-w-full">
+                        <div className="overflow-x-auto w-full max-w-full">
+                            <table className="w-full text-left border-collapse min-w-[700px]">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                        <th className="p-4">PI No.</th>
+                                        <th className="p-4">Party Code</th>
+                                        <th className="p-4">Customer Name</th>
+                                        <th className="p-4">Rudra Code(s)</th>
+                                        <th className="p-4 text-center">Total Qty</th>
+                                        <th className="p-4">Date</th>
+                                        <th className="p-4">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {recentOrders.map((order) => {
+                                        const totalQty = (order.items || []).reduce(
+                                            (sum, item) => sum + Number(item.qty || 0),
+                                            0
+                                        );
+                                        const codes = (order.items || [])
+                                            .map(i => i.rudraCode)
+                                            .filter(Boolean)
+                                            .join(', ');
 
-                                    return (
-                                        <tr key={order._id} className="hover:bg-slate-50">
-                                            <td className="p-4 font-bold text-indigo-600">{order.piNo || 'N/A'}</td>
-                                            <td className="p-4 text-xs font-bold text-slate-600">{order.partyCode || '-'}</td>
-                                            <td className="p-4 text-sm font-semibold text-slate-800">{order.name}</td>
-                                            <td className="p-4 text-sm font-bold text-blue-600">{codes || '-'}</td>
+                                        return (
+                                            <tr key={order._id} className="hover:bg-slate-50">
+                                                <td className="p-4 font-bold text-indigo-600">{order.piNo || 'N/A'}</td>
+                                                <td className="p-4 text-xs font-bold text-slate-600">{order.partyCode || '-'}</td>
+                                                <td className="p-4 text-sm font-semibold text-slate-800">{order.name}</td>
+                                                <td className="p-4 text-sm font-bold text-blue-600">{codes || '-'}</td>
+                                                <td className="p-4 text-center">
+                                                    <span className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full">
+                                                        {totalQty} Sets
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-sm text-slate-600">
+                                                    {order.date
+                                                        ? new Date(order.date).toLocaleDateString('en-IN', {
+                                                            day: '2-digit',
+                                                            month: 'short',
+                                                            year: 'numeric'
+                                                        })
+                                                        : '-'}
+                                                </td>
+                                                <td className="p-4">
+                                                    <span
+                                                        className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${order.status === 'Approved'
+                                                            ? 'bg-green-100 text-green-700'
+                                                            : 'bg-orange-100 text-orange-700'
+                                                            }`}
+                                                    >
+                                                        {order.status || 'Pending'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {recentOrders.length === 0 && (
+                                        <tr>
+                                            <td colSpan={7} className="p-12 text-center text-slate-400">
+                                                No recent orders found.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm w-full max-w-full">
+                        <div className="overflow-x-auto w-full max-w-full">
+                            <table className="w-full text-left border-collapse min-w-[600px]">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                        <th className="p-4">SKU / Code</th>
+                                        <th className="p-4">Material Name</th>
+                                        <th className="p-4">Inventory Group</th>
+                                        <th className="p-4 text-center">Category</th>
+                                        <th className="p-4 text-right">Available Stock</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {filteredLowStock.map((item) => (
+                                        <tr key={item._id} className="hover:bg-slate-50">
+                                            <td className="p-4 font-bold text-indigo-600">{item.itemCode}</td>
+                                            <td className="p-4 text-sm font-semibold text-slate-800">{item.name}</td>
+                                            <td className="p-4 text-sm text-slate-600">{item.groupName}</td>
                                             <td className="p-4 text-center">
-                                                <span className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full">
-                                                    {totalQty} Sets
+                                                <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
+                                                    {item.category}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-sm text-slate-600">
-                                                {order.date
-                                                    ? new Date(order.date).toLocaleDateString('en-IN', {
-                                                        day: '2-digit',
-                                                        month: 'short',
-                                                        year: 'numeric'
-                                                    })
-                                                    : '-'}
-                                            </td>
-                                            <td className="p-4">
-                                                <span
-                                                    className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${order.status === 'Approved'
-                                                        ? 'bg-green-100 text-green-700'
-                                                        : 'bg-orange-100 text-orange-700'
-                                                        }`}
-                                                >
-                                                    {order.status || 'Pending'}
+                                            <td className="p-4 text-right">
+                                                <span className="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full">
+                                                    {item.stock} {item.uom}
                                                 </span>
                                             </td>
                                         </tr>
-                                    );
-                                })}
-                                {recentOrders.length === 0 && (
-                                    <tr>
-                                        <td colSpan={7} className="p-12 text-center text-slate-400">
-                                            No recent orders found.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                    <th className="p-4">SKU / Code</th>
-                                    <th className="p-4">Material Name</th>
-                                    <th className="p-4">Inventory Group</th>
-                                    <th className="p-4 text-center">Category</th>
-                                    <th className="p-4 text-right">Available Stock</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filteredLowStock.map((item) => (
-                                    <tr key={item._id} className="hover:bg-slate-50">
-                                        <td className="p-4 font-bold text-indigo-600">{item.itemCode}</td>
-                                        <td className="p-4 text-sm font-semibold text-slate-800">{item.name}</td>
-                                        <td className="p-4 text-sm text-slate-600">{item.groupName}</td>
-                                        <td className="p-4 text-center">
-                                            <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
-                                                {item.category}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <span className="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full">
-                                                {item.stock} {item.uom}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {filteredLowStock.length === 0 && (
-                                    <tr>
-                                        <td colSpan={5} className="p-12 text-center text-slate-400">
-                                            All inventory items are well stocked (above 10 units).
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                    ))}
+                                    {filteredLowStock.length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="p-12 text-center text-slate-400">
+                                                All inventory items are well stocked (above 10 units).
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
             </div>
@@ -339,16 +343,16 @@ export default function DashboardModule({ onNavigate }) {
 const KpiCard = ({ title, value, subtitle, icon, bgColor, onClick }) => (
     <div
         onClick={onClick}
-        className={`bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4 transition-all ${onClick ? 'cursor-pointer hover:border-indigo-300 hover:shadow-md' : ''
+        className={`bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3.5 sm:gap-4 transition-all w-full max-w-full min-w-0 ${onClick ? 'cursor-pointer hover:border-indigo-300 hover:shadow-md' : ''
             }`}
     >
-        <div className={`w-12 h-12 rounded-xl ${bgColor} flex items-center justify-center shrink-0`}>
+        <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl ${bgColor} flex items-center justify-center shrink-0`}>
             {icon}
         </div>
-        <div className="min-w-0">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5">{title}</h3>
-            <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-slate-800 truncate">{value}</span>
+        <div className="min-w-0 flex-1">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-0.5 truncate">{title}</h3>
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="text-xl sm:text-2xl font-bold text-slate-800">{value}</span>
                 {subtitle && <span className="text-xs text-slate-500 font-medium truncate">{subtitle}</span>}
             </div>
         </div>

@@ -1,156 +1,193 @@
-import { headers } from 'next/headers';
-import jwt from 'jsonwebtoken';
-import dbConnect from './mongodb';
+import jwt from "jsonwebtoken";
+import { headers } from "next/headers";
+import { getServerSession } from "next-auth";
+import dbConnect from "./mongodb";
+import User from "../app/models/User";
 
 const JWT_SECRET = process.env.NEXTAUTH_SECRET || "rudra-erp-secret-key";
 
 export const ACTIONS = {
-    VIEW: 'view',
-    ADD: 'add',
-    EDIT: 'edit',
-    DELETE: 'delete',
-    APPROVE: 'approve',
-    PRINT: 'print',
-    EXPORT: 'export',
-    PROCESS_TURNING: 'process_turning',
-    PROCESS_BUFFING: 'process_buffing',
-    PROCESS_PLATING: 'process_plating',
+    VIEW: "view",
+    ADD: "add",
+    EDIT: "edit",
+    DELETE: "delete",
+    PRINT: "print",
+    EXPORT: "export",
+    APPROVE: "approve",
+    PROCESS_TURNING: "process_turning",
+    PROCESS_BUFFING: "process_buffing",
+    PROCESS_PLATING: "process_plating",
 };
 
-/**
- * Extracts and verifies the JWT from the Authorization header.
- * Returns only the decoded identity (id, role) — does NOT read permissions from JWT.
- *
- * @returns {{ authenticated: boolean, decoded?: object, error?: string, status?: number }}
- */
-async function extractToken() {
-    const headersList = await headers();
-    const authHeader = headersList.get('authorization');
+// Helper: Convert Mongoose Map or Object into a lowercase-keyed plain object
+export function normalizePermissionsMap(rawPermissions) {
+    if (!rawPermissions) return {};
+    const plain =
+        rawPermissions instanceof Map || typeof rawPermissions.entries === "function"
+            ? Object.fromEntries(rawPermissions)
+            : rawPermissions.toObject
+                ? rawPermissions.toObject()
+                : { ...rawPermissions };
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return { authenticated: false, error: "Unauthorized: Missing or invalid token format", status: 401 };
+    const normalized = {};
+    Object.keys(plain).forEach((key) => {
+        const lowerKey = String(key).trim().toLowerCase();
+        const actions = Array.isArray(plain[key])
+            ? plain[key].map((a) => String(a).trim())
+            : [];
+        
+        const existingLower = normalized[lowerKey] || [];
+        normalized[lowerKey] = Array.from(new Set([...existingLower, ...actions]));
+        normalized[key] = actions;
+    });
+
+    // Unify BOM and bom so both keys always have the complete combined set of permissions
+    const bomCombined = Array.from(new Set([
+        ...(normalized.BOM || []),
+        ...(normalized.bom || [])
+    ]));
+    if (bomCombined.length > 0 || normalized.BOM !== undefined || normalized.bom !== undefined) {
+        normalized.BOM = bomCombined;
+        normalized.bom = bomCombined;
     }
 
-    const token = authHeader.split(' ')[1];
-
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        return { authenticated: true, decoded };
-    } catch (err) {
-        return { authenticated: false, error: "Unauthorized: Invalid or expired token", status: 401 };
-    }
+    return normalized;
 }
 
 /**
- * Fetches the user's FRESH permissions from MongoDB.
- * This is the industry-standard approach — JWT is used only for authentication (identity),
- * and the database is the single source of truth for authorization (permissions).
- *
- * @param {string} userId - The user's MongoDB _id
- * @returns {object|null} - User document (without password) or null if not found
- */
-async function getUserFromDb(userId) {
-    // Dynamic import to avoid circular dependency issues with Next.js
-    const mongoose = (await import('mongoose')).default;
-    await dbConnect();
-
-    // Use raw mongoose query instead of importing User model to avoid
-    // circular import issues in Next.js API route resolution
-    const user = await mongoose.connection.db.collection('users').findOne(
-        { _id: new mongoose.Types.ObjectId(userId) },
-        { projection: { password: 0 } }
-    );
-
-    return user;
-}
-
-/**
- * Verifies the JWT token and checks module-level + action-level permissions.
- * 
- * IMPORTANT: Permissions are ALWAYS fetched from the database, NOT from the JWT.
- * This ensures that when the admin updates a manager's access, it takes effect
- * immediately — no re-login required.
- *
- * @param {string} module - The module identifier (e.g., 'order', 'process')
- * @param {string} action - The required action (e.g., 'view', 'edit')
- * @returns {{ authorized: boolean, user?: object, error?: string, status?: number }}
- */
-export async function checkPermission(module, action) {
-    const tokenResult = await extractToken();
-    if (!tokenResult.authenticated) {
-        return { authorized: false, error: tokenResult.error, status: tokenResult.status };
-    }
-
-    const decoded = tokenResult.decoded;
-
-    // Super admin bypasses all permission checks (role is immutable in JWT — safe to trust)
-    if (decoded.role === 'super_admin') {
-        return { authorized: true, user: decoded };
-    }
-
-    // For all other users, fetch FRESH permissions from the database
-    const dbUser = await getUserFromDb(decoded.id);
-
-    if (!dbUser) {
-        return { authorized: false, error: "Unauthorized: User not found", status: 401 };
-    }
-
-    // Block deactivated users
-    if (dbUser.isActive === false) {
-        return { authorized: false, error: "Forbidden: Account deactivated", status: 403 };
-    }
-
-    // Build a clean user object with fresh permissions from DB
-    const freshPermissions = dbUser.permissions instanceof Map
-        ? Object.fromEntries(dbUser.permissions)
-        : (dbUser.permissions || {});
-
-    const user = {
-        id: dbUser._id.toString(),
-        email: dbUser.email,
-        name: dbUser.name,
-        role: dbUser.role,
-        permissions: freshPermissions,
-    };
-
-    const modulePermissions = freshPermissions[module] || [];
-    if (!modulePermissions.includes(action)) {
-        return { authorized: false, error: "Forbidden: Missing Permissions", status: 403 };
-    }
-
-    return { authorized: true, user };
-}
-
-/**
- * Convenience: Verifies JWT and ensures the user is a super_admin.
- * Since role is immutable and set at account creation, it's safe to read from JWT.
- *
- * @returns {{ authorized: boolean, user?: object, error?: string, status?: number }}
- */
-export async function requireSuperAdmin() {
-    const tokenResult = await extractToken();
-    if (!tokenResult.authenticated) {
-        return { authorized: false, error: tokenResult.error, status: tokenResult.status };
-    }
-
-    if (tokenResult.decoded.role !== 'super_admin') {
-        return { authorized: false, error: "Forbidden: Super Admin access required", status: 403 };
-    }
-
-    return { authorized: true, user: tokenResult.decoded };
-}
-
-/**
- * Convenience: Verifies JWT and returns the decoded user without any permission check.
- * Use for endpoints that just need a valid authenticated user (e.g., /users/me).
- *
- * @returns {{ authorized: boolean, user?: object, error?: string, status?: number }}
+ * Authenticates the request via Bearer JWT (or NextAuth session)
+ * AND loads fresh user role + permissions from MongoDB so permission
+ * updates in Settings take effect immediately without re-login.
  */
 export async function requireAuth() {
-    const tokenResult = await extractToken();
-    if (!tokenResult.authenticated) {
-        return { authorized: false, error: tokenResult.error, status: tokenResult.status };
+    try {
+        let tokenUserId = null;
+
+        const headersList = await headers();
+        const authHeader =
+            headersList.get("authorization") || headersList.get("Authorization");
+
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            const token = authHeader.split(" ")[1];
+            if (token && token !== "null" && token !== "undefined") {
+                const decoded = jwt.verify(token, JWT_SECRET);
+                tokenUserId = decoded.id || decoded._id;
+            }
+        }
+
+        // Fallback to NextAuth session if no Bearer header
+        if (!tokenUserId) {
+            try {
+                const session = await getServerSession();
+                if (session?.user?.id || session?.user?._id) {
+                    tokenUserId = session.user.id || session.user._id;
+                }
+            } catch {
+                // Ignore NextAuth session errors when using custom JWT
+            }
+        }
+
+        if (!tokenUserId) {
+            return {
+                authorized: false,
+                status: 401,
+                error: "Unauthorized: Please log in",
+            };
+        }
+
+        await dbConnect();
+        const dbUser = await User.findById(tokenUserId, { password: 0 });
+
+        if (!dbUser) {
+            return {
+                authorized: false,
+                status: 401,
+                error: "User account no longer exists",
+            };
+        }
+
+        if (dbUser.isActive === false) {
+            return {
+                authorized: false,
+                status: 403,
+                error: "Account deactivated. Contact your administrator.",
+            };
+        }
+
+        const normalizedPermissions = normalizePermissionsMap(dbUser.permissions);
+
+        return {
+            authorized: true,
+            status: 200,
+            user: {
+                id: dbUser._id.toString(),
+                _id: dbUser._id.toString(),
+                name: dbUser.name,
+                email: dbUser.email,
+                role: dbUser.role,
+                isActive: dbUser.isActive !== false,
+                permissions: normalizedPermissions,
+            },
+        };
+    } catch (error) {
+        console.error("Auth verification error:", error.message);
+        return {
+            authorized: false,
+            status: 401,
+            error: "Invalid or expired session token",
+        };
+    }
+}
+
+export async function requireSuperAdmin() {
+    const auth = await requireAuth();
+    if (!auth.authorized) return auth;
+
+    if (auth.user.role !== "super_admin") {
+        return {
+            authorized: false,
+            status: 403,
+            error: "Forbidden: Super Admin access required",
+        };
     }
 
-    return { authorized: true, user: tokenResult.decoded };
+    return auth;
+}
+
+/**
+ * Case-insensitive permission checker.
+ * Matches 'bom' or 'BOM', and treats Process 'add' & 'edit' interchangeably for module checks.
+ */
+export async function checkPermission(moduleName, action) {
+    const auth = await requireAuth();
+    if (!auth.authorized) return auth;
+
+    if (auth.user.role === "super_admin") {
+        return auth;
+    }
+
+    const targetModule = String(moduleName || "").trim().toLowerCase();
+    const targetAction = String(action || "view").trim().toLowerCase();
+
+    const modulePerms = (auth.user.permissions?.[targetModule] || []).map((p) =>
+        String(p).trim().toLowerCase()
+    );
+
+    let hasAccess = modulePerms.includes(targetAction);
+
+    // If checking 'edit' on process, allow if user has 'add' on process
+    if (!hasAccess && targetModule === "process" && targetAction === "edit") {
+        hasAccess = modulePerms.includes("add");
+    }
+
+    if (!hasAccess) {
+        return {
+            authorized: false,
+            status: 403,
+            error: `Forbidden: Missing '${targetAction}' permission for '${targetModule}'`,
+            user: auth.user,
+        };
+    }
+
+    return auth;
 }

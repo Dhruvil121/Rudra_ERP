@@ -30,7 +30,7 @@ export function AppLayout() {
     const currentTitle = navItems.find(item => item.path === location.pathname)?.title || 'Rudra ERP';
 
     return (
-        <div className="min-h-screen bg-[#f3f4f6] flex">
+        <div className="min-h-screen bg-[#f3f4f6] w-full max-w-full overflow-x-hidden relative">
 
             {/* Mobile Overlay Background */}
             {isMobileOpen && (
@@ -47,8 +47,15 @@ export function AppLayout() {
         md:translate-x-0 flex flex-col
         ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-                <div className="h-16 flex items-center px-6 bg-slate-950 text-white font-bold text-xl tracking-wide">
-                    Rudra ERP
+                <div className="h-16 flex items-center justify-between px-6 bg-slate-950 text-white font-bold text-xl tracking-wide">
+                    <span>Rudra ERP</span>
+                    <button
+                        onClick={() => setIsMobileOpen(false)}
+                        className="md:hidden text-slate-400 hover:text-white p-1 rounded-lg"
+                        aria-label="Close Navigation Menu"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
 
                 <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
@@ -74,29 +81,30 @@ export function AppLayout() {
             </aside>
 
             {/* Main Content Wrapper */}
-            <div className="flex-1 flex flex-col min-h-screen md:ml-64 transition-all">
+            <div className="min-h-screen flex flex-col w-full md:ml-64 md:w-[calc(100%-16rem)] max-w-full transition-all">
 
                 {/* Global Top Header */}
-                <header className="h-16 bg-white shadow-sm px-4 md:px-8 flex items-center justify-between sticky top-0 z-30">
-                    <div className="flex items-center gap-4">
+                <header className="h-16 bg-white shadow-sm px-4 md:px-8 flex items-center justify-between sticky top-0 z-30 w-full max-w-full">
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                         <button
                             onClick={() => setIsMobileOpen(true)}
-                            className="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg md:hidden"
+                            className="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg md:hidden shrink-0"
+                            aria-label="Open Navigation Menu"
                         >
                             <Menu className="w-6 h-6" />
                         </button>
-                        <h1 className="text-xl font-bold text-slate-800">{currentTitle}</h1>
+                        <h1 className="text-lg sm:text-xl font-bold text-slate-800 truncate">{currentTitle}</h1>
                     </div>
 
                     {/* User Profile & Logout */}
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm">
+                    <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-xs sm:text-sm shrink-0">
                             {user?.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'U'}
                         </div>
                         <span className="text-sm font-medium text-slate-600 hidden md:block">{user?.name}</span>
                         <button
                             onClick={() => { logout(); window.location.href = '/login'; }}
-                            className="text-xs px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-md font-medium transition-colors"
+                            className="text-xs px-2.5 sm:px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-md font-medium transition-colors shrink-0"
                         >
                             Logout
                         </button>
@@ -104,7 +112,7 @@ export function AppLayout() {
                 </header>
 
                 {/* Dynamic Page Content injected by React Router */}
-                <main className="p-4 md:p-8 flex-1 overflow-x-hidden flex flex-col">
+                <main className="p-4 md:p-8 flex-1 w-full max-w-full min-w-0 flex flex-col">
                     <Outlet />
                 </main>
             </div>
