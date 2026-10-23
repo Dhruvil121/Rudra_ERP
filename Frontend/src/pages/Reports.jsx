@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
     FileText, Calendar, Download, Printer, TrendingUp, Package,
-    Cog, Loader2, Search, Factory, IndianRupee, Layers, Archive, RefreshCw
+    Cog, Loader2, Search, Factory, IndianRupee, Layers, Archive, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { useReports } from '../hooks/useReportsData';
 import { useOrders } from '../hooks/useOrderData';
@@ -9,9 +9,9 @@ import { useInventory } from '../hooks/useInventoryData';
 import { useFeedback } from '../context/FeedbackContext';
 
 export default function ReportsModule() {
-    // Default to 'all' or 'monthly' so the user immediately sees their active factory data
     const [reportType, setReportType] = useState('monthly'); // 'daily' | 'monthly' | 'all'
     const [activeTab, setActiveTab] = useState('logs'); // 'logs' | 'stages' | 'inventory'
+    const [priorityFilter, setPriorityFilter] = useState('all'); // 'all' | 'urgent' | 'mixed' | 'normal'
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -22,7 +22,21 @@ export default function ReportsModule() {
     const { data: liveInventory = [] } = useInventory();
     const { showToast } = useFeedback();
 
-    // Build real fallback logs from liveOrders if the backend /api/reports route hasn't been restarted yet
+    // Map order priorities by piNo / orderId so logs always carry live priority & size variants
+    const orderMetaMap = useMemo(() => {
+        const map = new Map();
+        liveOrders.forEach(o => {
+            const meta = {
+                orderPriority: o.orderPriority || 'normal',
+                status: o.status || 'Pending',
+                sizes: (o.items || []).map(i => `${i.rudraCode}${i.size ? ` (${i.size})` : ''}`).join(', ')
+            };
+            map.set(o._id, meta);
+            if (o.piNo) map.set(o.piNo, meta);
+        });
+        return map;
+    }, [liveOrders]);
+
     const fallbackLogs = useMemo(() => {
         return liveOrders
             .filter(o => {
@@ -37,10 +51,11 @@ export default function ReportsModule() {
                     batchNo: o.piNo || 'N/A',
                     partyCode: o.partyCode || '-',
                     customerName: o.name || '-',
-                    rudraCode: (o.items || []).map(i => i.rudraCode).filter(Boolean).join(', ') || '-',
+                    rudraCode: (o.items || []).map(i => `${i.rudraCode}${i.size ? ` (${i.size})` : ''}`).filter(Boolean).join(', ') || '-',
+                    orderPriority: o.orderPriority || 'normal',
                     orderSets: sets,
                     stepsCount: 0,
-                    stage: o.status === 'Approved' ? 'Approved for Production' : 'Order Created',
+                    stage: o.status === 'Dispatched' ? 'Dispatched' : o.status === 'Approved' ? 'Approved for Production' : 'Order Created',
                     inputQty: sets,
                     outputQty: 0,
                     extraQty: 0,
@@ -62,7 +77,9 @@ export default function ReportsModule() {
                 name: item.name,
                 groupName: g.groupName,
                 category: item.category || 'Raw Material',
+                inventoryType: item.inventoryType || 'process',
                 stock: Number(item.stock || 0),
+                reservedInProcess: Number(item.reservedInProcess || 0),
                 uom: item.uom || 'Pcs',
                 unitCost: Number(item.unitCost || 0),
                 totalValue: Number(item.stock || 0) * Number(item.unitCost || 0)
@@ -70,23 +87,42 @@ export default function ReportsModule() {
         );
     }, [liveInventory]);
 
-    const rawLogs = data?.logs || fallbackLogs;
-    const rawStages = data?.stageBreakdown || [];
-    const rawInventory = data?.inventoryReport?.length > 0 ? data.inventoryReport : fallbackInventory;
+    const rawLogs = useMemo(() => {
+        const base = data?.logs || fallbackLogs;
+        return base.map(l => {
+            const meta = orderMetaMap.get(l.orderId) || orderMetaMap.get(l.batchNo);
+            return {
+                ...l,
+                orderPriority: l.orderPriority || meta?.orderPriority || 'normal',
+                rudraCode: meta?.sizes || l.rudraCode,
+                status: meta?.status === 'Dispatched' ? 'Dispatched' : l.status
+            };
+        });
+    }, [data?.logs, fallbackLogs, orderMetaMap]);
 
-    // Filter datasets by Search Term
+    const rawStages = data?.stageBreakdown || [];
+    const rawInventory = fallbackInventory.length > 0 ? fallbackInventory : (data?.inventoryReport || []);
+
     const filteredLogs = useMemo(() => {
         const term = searchTerm.toLowerCase();
-        return rawLogs.filter(
-            l =>
-                !term ||
-                l.batchNo?.toLowerCase().includes(term) ||
-                l.customerName?.toLowerCase().includes(term) ||
-                l.partyCode?.toLowerCase().includes(term) ||
-                l.rudraCode?.toLowerCase().includes(term) ||
-                l.stage?.toLowerCase().includes(term)
-        );
-    }, [rawLogs, searchTerm]);
+        return rawLogs
+            .filter(l => {
+                const matchesTerm =
+                    !term ||
+                    l.batchNo?.toLowerCase().includes(term) ||
+                    l.customerName?.toLowerCase().includes(term) ||
+                    l.partyCode?.toLowerCase().includes(term) ||
+                    l.rudraCode?.toLowerCase().includes(term) ||
+                    l.stage?.toLowerCase().includes(term);
+                const matchesPriority =
+                    priorityFilter === 'all' || l.orderPriority === priorityFilter;
+                return matchesTerm && matchesPriority;
+            })
+            .sort((a, b) => {
+                const p = { urgent: 0, mixed: 1, normal: 2 };
+                return (p[a.orderPriority] ?? 2) - (p[b.orderPriority] ?? 2);
+            });
+    }, [rawLogs, searchTerm, priorityFilter]);
 
     const filteredStages = useMemo(() => {
         const term = searchTerm.toLowerCase();
@@ -105,9 +141,8 @@ export default function ReportsModule() {
         );
     }, [rawInventory, searchTerm]);
 
-    // Calculate live summary stats from the active filtered logs so cards always match the table
     const computedSummary = useMemo(() => {
-        if (data?.summary && !searchTerm) return data.summary;
+        if (data?.summary && !searchTerm && priorityFilter === 'all') return data.summary;
         let input = 0,
             output = 0,
             extra = 0,
@@ -135,11 +170,8 @@ export default function ReportsModule() {
             scrapRate: `${scrapRate}%`,
             totalCost: cost
         };
-    }, [data?.summary, filteredLogs, searchTerm]);
+    }, [data?.summary, filteredLogs, searchTerm, priorityFilter]);
 
-    // ==========================================
-    // EXPORT TO CSV (EXCEL)
-    // ==========================================
     const handleExportCSV = () => {
         let headers = [];
         let rows = [];
@@ -147,9 +179,10 @@ export default function ReportsModule() {
         if (activeTab === 'logs') {
             headers = [
                 'Order ID (PI No)',
+                'Priority',
                 'Party Code',
                 'Customer Name',
-                'Rudra Code',
+                'Rudra Code & Sizes',
                 'Order Sets',
                 'Latest Stage',
                 'Input Qty (Pcs)',
@@ -163,6 +196,7 @@ export default function ReportsModule() {
             ];
             rows = filteredLogs.map(l => [
                 l.batchNo,
+                (l.orderPriority || 'normal').toUpperCase(),
                 l.partyCode,
                 `"${(l.customerName || '').replace(/"/g, '""')}"`,
                 `"${(l.rudraCode || '').replace(/"/g, '""')}"`,
@@ -204,7 +238,9 @@ export default function ReportsModule() {
                 'Material Name',
                 'Inventory Group',
                 'Category',
-                'In Stock',
+                'Physical Stock',
+                'Reserved In Process',
+                'Net Available',
                 'UOM',
                 'Unit Cost (INR)',
                 'Total Valuation (INR)'
@@ -215,6 +251,8 @@ export default function ReportsModule() {
                 `"${(i.groupName || '').replace(/"/g, '""')}"`,
                 i.category,
                 i.stock,
+                i.reservedInProcess || 0,
+                Math.max(0, Number(i.stock || 0) - Number(i.reservedInProcess || 0)),
                 i.uom,
                 i.unitCost,
                 i.totalValue
@@ -243,178 +281,13 @@ export default function ReportsModule() {
         showToast('Report exported to CSV (Excel) successfully!', 'success');
     };
 
-    // ==========================================
-    // EXPORT PDF / PRINT REPORT
-    // ==========================================
     const handlePrintOrPDF = () => {
-        const timeframeLabel =
-            reportType === 'daily'
-                ? `Daily Report (${selectedDate})`
-                : reportType === 'monthly'
-                    ? `Monthly Report (${selectedMonth})`
-                    : 'All-Time Cumulative Report';
-
-        const tableHtml =
-            activeTab === 'logs'
-                ? `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>PI No.</th>
-                            <th>Customer (Party)</th>
-                            <th>Rudra Code</th>
-                            <th>Latest Stage</th>
-                            <th style="text-align:right">Input</th>
-                            <th style="text-align:right">Output</th>
-                            <th style="text-align:right">Extra</th>
-                            <th style="text-align:right">Reject</th>
-                            <th style="text-align:right">Boxes</th>
-                            <th style="text-align:right">Cost (₹)</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${filteredLogs
-                    .map(
-                        l => `
-                            <tr>
-                                <td><strong>${l.batchNo}</strong></td>
-                                <td>${l.customerName}${l.partyCode !== '-' ? `(${l.partyCode})` : ''}</td>
-                                <td><strong>${l.rudraCode}</strong></td>
-                                <td>${l.stage}</td>
-                                <td style="text-align:right">${l.inputQty}</td>
-                                <td style="text-align:right">${l.outputQty}</td>
-                                <td style="text-align:right">${l.extraQty}</td>
-                                <td style="text-align:right">${l.rejectionQty}</td>
-                                <td style="text-align:right">${l.boxes}</td>
-                                <td style="text-align:right">₹${Number(l.totalCost || 0).toLocaleString('en-IN')}</td>
-                                <td>${l.status}</td>
-                            </tr>
-                        `
-                    )
-                    .join('')}
-                    </tbody>
-                </table>`
-                : activeTab === 'stages'
-                    ? `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Process Stage</th>
-                            <th style="text-align:right">Batches</th>
-                            <th style="text-align:right">Total Input</th>
-                            <th style="text-align:right">Good Output</th>
-                            <th style="text-align:right">Extra (Inv)</th>
-                            <th style="text-align:right">Rejection</th>
-                            <th style="text-align:right">Raw Material</th>
-                            <th style="text-align:right">Total Cost (₹)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${filteredStages
-                        .map(
-                            s => `
-                            <tr>
-                                <td><strong>${s.stageName}</strong></td>
-                                <td style="text-align:right">${s.ordersCount}</td>
-                                <td style="text-align:right">${s.inputPcs} Pcs</td>
-                                <td style="text-align:right">${s.outputPcs} Pcs</td>
-                                <td style="text-align:right">${s.extraPcs} Pcs</td>
-                                <td style="text-align:right">${s.rejectionPcs} Pcs</td>
-                                <td style="text-align:right">${s.rawKg} Kg</td>
-                                <td style="text-align:right">₹${Number(s.totalCost || 0).toLocaleString('en-IN')}</td>
-                            </tr>
-                        `
-                        )
-                        .join('')}
-                    </tbody>
-                </table>`
-                    : `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>SKU Code</th>
-                            <th>Material Name</th>
-                            <th>Group</th>
-                            <th>Category</th>
-                            <th style="text-align:right">In Stock</th>
-                            <th style="text-align:right">Unit Cost (₹)</th>
-                            <th style="text-align:right">Valuation (₹)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${filteredInventory
-                        .map(
-                            i => `
-                            <tr>
-                                <td><strong>${i.itemCode}</strong></td>
-                                <td>${i.name}</td>
-                                <td>${i.groupName}</td>
-                                <td>${i.category}</td>
-                                <td style="text-align:right">${i.stock}${i.uom}</td>
-                                <td style="text-align:right">₹${Number(i.unitCost || 0).toLocaleString('en-IN')}</td>
-                                <td style="text-align:right"><strong>₹${Number(i.totalValue || 0).toLocaleString('en-IN')}</strong></td>
-                            </tr>
-                        `
-                        )
-                        .join('')}
-                    </tbody>
-                </table>`;
-
-        const printWindow = window.open('', '_blank', 'width=1100,height=800');
-        if (!printWindow) {
-            window.print();
-            return;
-        }
-
-        printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Rudra ERP - ${timeframeLabel}</title>
-                <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1e293b; padding: 28px; }
-                    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #e2e8f0; padding-bottom: 16px; margin-bottom: 20px; }
-                    .header h1 { margin: 0; font-size: 22px; color: #0f172a; }
-                    .header p { margin: 4px 0 0; font-size: 12px; color: #64748b; }
-                    .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
-                    .kpi { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 14px; background: #f8fafc; }
-                    .kpi span { font-size: 10px; text-transform: uppercase; color: #64748b; font-weight: 700; display: block; }
-                    .kpi strong { font-size: 16px; color: #0f172a; margin-top: 4px; display: block; }
-                    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-                    th { background: #f1f5f9; color: #475569; text-transform: uppercase; font-size: 10px; padding: 10px 8px; border-bottom: 2px solid #cbd5e1; text-align: left; }
-                    td { padding: 9px 8px; border-bottom: 1px solid #e2e8f0; }
-                    @media print { body { padding: 0; } }
-                </style>
-            </head>
-            <body>
-                <div class="header">
-                    <div>
-                        <h1>RUDRA HARDWARE ERP — PRODUCTION & INVENTORY REPORT</h1>
-                        <p>${timeframeLabel} • Generated on ${new Date().toLocaleString('en-IN')}</p>
-                    </div>
-                </div>
-                <div class="kpis">
-                    <div class="kpi"><span>Total Input</span><strong>${computedSummary.production}</strong></div>
-                    <div class="kpi"><span>Good Output</span><strong>${computedSummary.goodOutput || '0 Pcs'}</strong></div>
-                    <div class="kpi"><span>Extra To Inv.</span><strong>${computedSummary.extraInventory || '0 Pcs'}</strong></div>
-                    <div class="kpi"><span>Scrap / Loss</span><strong>${computedSummary.waste} (${computedSummary.scrapRate || '0%'})</strong></div>
-                    <div class="kpi"><span>Final Assembly</span><strong>${computedSummary.assembly}</strong></div>
-                </div>
-                ${tableHtml}
-                <script>
-                    window.onload = function() { window.print(); };
-                </script>
-            </body>
-            </html>
-        `);
-        printWindow.document.close();
+        window.print();
     };
 
     return (
         <div className="w-full">
             <div className="space-y-4 max-w-7xl mx-auto pb-16">
-                {/* Top Header — Matches BOM Layout */}
                 <div className="flex flex-wrap justify-between items-center gap-4 pb-4 border-b border-slate-200">
                     <div className="flex items-center gap-3">
                         <div className="p-3 bg-indigo-100 text-indigo-600 rounded-xl">
@@ -423,7 +296,7 @@ export default function ReportsModule() {
                         <div>
                             <h1 className="text-xl font-bold text-slate-800">Production & Inventory Reports</h1>
                             <p className="text-sm text-slate-500">
-                                Live manufacturing batch logs, stage-wise efficiency, scrap tracking & stock valuation
+                                Priority-sorted manufacturing logs, multi-size tracking, soft-reserved rework stock & valuation
                             </p>
                         </div>
                     </div>
@@ -432,21 +305,21 @@ export default function ReportsModule() {
                         <button
                             onClick={() => refetch()}
                             disabled={isFetching}
-                            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-50 shadow-sm transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-50 shadow-sm"
                         >
                             <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin text-indigo-600' : ''}`} />
                             Refresh
                         </button>
                         <button
                             onClick={handlePrintOrPDF}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 shadow-sm transition-colors"
+                            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 text-slate-700 text-sm font-semibold rounded-lg hover:bg-slate-50 shadow-sm"
                         >
                             <Printer className="w-4 h-4 text-slate-500" />
                             Print / Save PDF
                         </button>
                         <button
                             onClick={handleExportCSV}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm transition-colors"
+                            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm"
                         >
                             <Download className="w-4 h-4" />
                             Export Excel (CSV)
@@ -454,7 +327,6 @@ export default function ReportsModule() {
                     </div>
                 </div>
 
-                {/* 6 KPI Summary Cards — Matches Dashboard & BOM Layout */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <ReportKpiCard
                         title="Total Processed (Input)"
@@ -503,22 +375,32 @@ export default function ReportsModule() {
                     />
                 </div>
 
-                {/* Full-Width White Filter, Search & View Bar — Matches BOM Layout */}
                 <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
                     <div className="flex flex-wrap items-center gap-3">
-                        {/* Search Input */}
-                        <div className="relative w-72">
+                        <div className="relative w-64">
                             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                             <input
                                 type="text"
-                                placeholder="Search PI No, Party, Rudra Code, Stage..."
+                                placeholder="Search PI No, Party, Rudra Code..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="w-full pl-9 pr-3 py-1.5 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500"
                             />
                         </div>
 
-                        {/* Timeframe Selector (Daily / Monthly / All-Time) */}
+                        {activeTab === 'logs' && (
+                            <select
+                                value={priorityFilter}
+                                onChange={(e) => setPriorityFilter(e.target.value)}
+                                className="px-3 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg focus:outline-none"
+                            >
+                                <option value="all">All Priorities</option>
+                                <option value="urgent">🔴 Urgent Only</option>
+                                <option value="mixed">⚡ Mixed (Urgent Split)</option>
+                                <option value="normal">Normal Only</option>
+                            </select>
+                        )}
+
                         <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
                             {[
                                 { id: 'daily', label: 'Daily' },
@@ -538,7 +420,6 @@ export default function ReportsModule() {
                             ))}
                         </div>
 
-                        {/* Date or Month Picker */}
                         {reportType === 'daily' && (
                             <div className="flex items-center gap-1.5">
                                 <Calendar className="w-4 h-4 text-slate-400" />
@@ -546,7 +427,7 @@ export default function ReportsModule() {
                                     type="date"
                                     value={selectedDate}
                                     onChange={(e) => setSelectedDate(e.target.value)}
-                                    className="px-2.5 py-1 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
+                                    className="px-2.5 py-1 text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700"
                                 />
                             </div>
                         )}
@@ -557,13 +438,12 @@ export default function ReportsModule() {
                                     type="month"
                                     value={selectedMonth}
                                     onChange={(e) => setSelectedMonth(e.target.value)}
-                                    className="px-2.5 py-1 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
+                                    className="px-2.5 py-1 text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700"
                                 />
                             </div>
                         )}
                     </div>
 
-                    {/* Report Dataset Tabs */}
                     <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
                         <button
                             onClick={() => setActiveTab('logs')}
@@ -598,198 +478,206 @@ export default function ReportsModule() {
                     </div>
                 </div>
 
-                {/* Full-Width Data Tables — Matches BOM Layout */}
                 {isLoading ? (
                     <div className="bg-white rounded-xl border border-slate-200 p-12 flex justify-center">
                         <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
                     </div>
                 ) : activeTab === 'logs' ? (
                     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                    <th className="p-4">Batch / PI No.</th>
-                                    <th className="p-4">Customer & Party Code</th>
-                                    <th className="p-4">Rudra Code</th>
-                                    <th className="p-4">Latest Stage</th>
-                                    <th className="p-4 text-center">Input</th>
-                                    <th className="p-4 text-center">Output</th>
-                                    <th className="p-4 text-center">Extra (Inv)</th>
-                                    <th className="p-4 text-center">Rejection</th>
-                                    <th className="p-4 text-center">Boxes</th>
-                                    <th className="p-4 text-right">Cost (₹)</th>
-                                    <th className="p-4">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filteredLogs.map((log) => (
-                                    <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="p-4 font-bold text-indigo-600">{log.batchNo}</td>
-                                        <td className="p-4">
-                                            <div className="text-sm font-semibold text-slate-800">{log.customerName}</div>
-                                            {log.partyCode && log.partyCode !== '-' && (
-                                                <div className="text-xs font-bold text-slate-400">{log.partyCode}</div>
-                                            )}
-                                        </td>
-                                        <td className="p-4 text-sm font-bold text-blue-600">{log.rudraCode}</td>
-                                        <td className="p-4">
-                                            <span className="text-sm font-medium text-slate-700">{log.stage}</span>
-                                            {log.stepsCount > 0 && (
-                                                <span className="block text-[11px] text-slate-400">
-                                                    {log.stepsCount} step(s) active
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="p-4 text-center font-semibold text-slate-700">{log.inputQty}</td>
-                                        <td className="p-4 text-center">
-                                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full">
-                                                {log.outputQty} Pcs
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <span className="px-2.5 py-1 bg-orange-50 text-orange-700 text-xs font-bold rounded-full">
-                                                +{log.extraQty || 0}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <span className="px-2.5 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-full">
-                                                {log.rejectionQty || 0}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center font-bold text-blue-600">{log.boxes || 0}</td>
-                                        <td className="p-4 text-right text-sm font-bold text-slate-800">
-                                            ₹{Number(log.totalCost || 0).toLocaleString('en-IN')}
-                                        </td>
-                                        <td className="p-4">
-                                            <span
-                                                className={`px-2.5 py-1 text-xs font-bold rounded-full uppercase ${log.status === 'Completed' || log.status === 'Approved'
-                                                        ? 'bg-green-100 text-green-700'
-                                                        : log.status === 'In Progress'
-                                                            ? 'bg-blue-100 text-blue-700'
-                                                            : 'bg-orange-100 text-orange-700'
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[950px]">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                        <th className="p-4">Batch / PI No.</th>
+                                        <th className="p-4">Priority</th>
+                                        <th className="p-4">Customer & Party</th>
+                                        <th className="p-4">Rudra Code & Sizes</th>
+                                        <th className="p-4">Latest Stage</th>
+                                        <th className="p-4 text-center">Input</th>
+                                        <th className="p-4 text-center">Output</th>
+                                        <th className="p-4 text-center">Extra</th>
+                                        <th className="p-4 text-center">Rejection</th>
+                                        <th className="p-4 text-right">Cost (₹)</th>
+                                        <th className="p-4">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {filteredLogs.map((log) => {
+                                        const isUrg = log.orderPriority === 'urgent';
+                                        const isMix = log.orderPriority === 'mixed';
+                                        return (
+                                            <tr
+                                                key={log.id}
+                                                className={`hover:bg-slate-50 transition-colors ${isUrg
+                                                        ? 'border-l-4 border-red-500 bg-red-50/20'
+                                                        : isMix
+                                                            ? 'border-l-4 border-amber-400 bg-amber-50/15'
+                                                            : ''
                                                     }`}
                                             >
-                                                {log.status}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {filteredLogs.length === 0 && (
-                                    <tr>
-                                        <td colSpan={11} className="p-12 text-center text-slate-400">
-                                            No production logs found for this timeframe. Switch to "All Time" to view all historical records.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                                <td className="p-4 font-bold text-indigo-600">{log.batchNo}</td>
+                                                <td className="p-4">
+                                                    {isUrg ? (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">
+                                                            <AlertTriangle className="w-3 h-3" /> Urgent
+                                                        </span>
+                                                    ) : isMix ? (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full uppercase">
+                                                            ⚡ Mixed
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400 font-medium">Normal</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="text-sm font-semibold text-slate-800">{log.customerName}</div>
+                                                    {log.partyCode && log.partyCode !== '-' && (
+                                                        <div className="text-xs font-bold text-slate-400">{log.partyCode}</div>
+                                                    )}
+                                                </td>
+                                                <td className="p-4 text-xs font-bold text-blue-600">{log.rudraCode}</td>
+                                                <td className="p-4 text-sm font-medium text-slate-700">{log.stage}</td>
+                                                <td className="p-4 text-center font-semibold text-slate-700">{log.inputQty}</td>
+                                                <td className="p-4 text-center">
+                                                    <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full">
+                                                        {log.outputQty} Pcs
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    <span className="px-2.5 py-1 bg-orange-50 text-orange-700 text-xs font-bold rounded-full">
+                                                        +{log.extraQty || 0}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    <span className="px-2.5 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-full">
+                                                        {log.rejectionQty || 0}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-right text-sm font-bold text-slate-800">
+                                                    ₹{Number(log.totalCost || 0).toLocaleString('en-IN')}
+                                                </td>
+                                                <td className="p-4">
+                                                    <span
+                                                        className={`px-2.5 py-1 text-xs font-bold rounded-full uppercase ${log.status === 'Dispatched'
+                                                                ? 'bg-blue-100 text-blue-700'
+                                                                : log.status === 'Completed' || log.status === 'Approved'
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : 'bg-orange-100 text-orange-700'
+                                                            }`}
+                                                    >
+                                                        {log.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {filteredLogs.length === 0 && (
+                                        <tr>
+                                            <td colSpan={11} className="p-12 text-center text-slate-400">
+                                                No production logs found for this filter.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 ) : activeTab === 'stages' ? (
                     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                    <th className="p-4">Process Stage / Department</th>
-                                    <th className="p-4 text-center">Batches Handled</th>
-                                    <th className="p-4 text-center">Total Input</th>
-                                    <th className="p-4 text-center">Good Output</th>
-                                    <th className="p-4 text-center">Extra (To Inv)</th>
-                                    <th className="p-4 text-center">Rejection / Scrap</th>
-                                    <th className="p-4 text-center">Raw Material (KG)</th>
-                                    <th className="p-4 text-right">Department Cost (₹)</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filteredStages.map((st) => (
-                                    <tr key={st.stageName} className="hover:bg-slate-50">
-                                        <td className="p-4 font-bold text-indigo-600">{st.stageName}</td>
-                                        <td className="p-4 text-center font-semibold text-slate-700">{st.ordersCount}</td>
-                                        <td className="p-4 text-center font-semibold text-slate-800">{st.inputPcs} Pcs</td>
-                                        <td className="p-4 text-center">
-                                            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full">
-                                                {st.outputPcs} Pcs
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <span className="px-2.5 py-1 bg-orange-50 text-orange-700 text-xs font-bold rounded-full">
-                                                +{st.extraPcs} Pcs
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <span className="px-2.5 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-full">
-                                                {st.rejectionPcs} Pcs
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center text-sm font-semibold text-slate-600">
-                                            {st.rawKg} Kg
-                                        </td>
-                                        <td className="p-4 text-right font-bold text-slate-800">
-                                            ₹{Number(st.totalCost || 0).toLocaleString('en-IN')}
-                                        </td>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[800px]">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                        <th className="p-4">Process Stage / Department</th>
+                                        <th className="p-4 text-center">Batches Handled</th>
+                                        <th className="p-4 text-center">Total Input</th>
+                                        <th className="p-4 text-center">Good Output</th>
+                                        <th className="p-4 text-center">Extra (To Inv)</th>
+                                        <th className="p-4 text-center">Rejection / Scrap</th>
+                                        <th className="p-4 text-center">Raw Material (KG)</th>
+                                        <th className="p-4 text-right">Department Cost (₹)</th>
                                     </tr>
-                                ))}
-                                {filteredStages.length === 0 && (
-                                    <tr>
-                                        <td colSpan={8} className="p-12 text-center text-slate-400">
-                                            No process stage data recorded for this timeframe.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {filteredStages.map((st) => (
+                                        <tr key={st.stageName} className="hover:bg-slate-50">
+                                            <td className="p-4 font-bold text-indigo-600">{st.stageName}</td>
+                                            <td className="p-4 text-center font-semibold text-slate-700">{st.ordersCount}</td>
+                                            <td className="p-4 text-center font-semibold text-slate-800">{st.inputPcs} Pcs</td>
+                                            <td className="p-4 text-center">
+                                                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full">
+                                                    {st.outputPcs} Pcs
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                <span className="px-2.5 py-1 bg-orange-50 text-orange-700 text-xs font-bold rounded-full">
+                                                    +{st.extraPcs} Pcs
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                <span className="px-2.5 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-full">
+                                                    {st.rejectionPcs} Pcs
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-center text-sm font-semibold text-slate-600">
+                                                {st.rawKg} Kg
+                                            </td>
+                                            <td className="p-4 text-right font-bold text-slate-800">
+                                                ₹{Number(st.totalCost || 0).toLocaleString('en-IN')}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 ) : (
                     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                    <th className="p-4">SKU / Code</th>
-                                    <th className="p-4">Material / Part Name</th>
-                                    <th className="p-4">Inventory Group</th>
-                                    <th className="p-4 text-center">Category</th>
-                                    <th className="p-4 text-right">In Stock</th>
-                                    <th className="p-4 text-right">Unit Cost (₹)</th>
-                                    <th className="p-4 text-right">Total Valuation (₹)</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {filteredInventory.map((item) => (
-                                    <tr key={item.id} className="hover:bg-slate-50">
-                                        <td className="p-4 font-bold text-indigo-600">{item.itemCode}</td>
-                                        <td className="p-4 text-sm font-semibold text-slate-800">{item.name}</td>
-                                        <td className="p-4 text-sm text-slate-600">{item.groupName}</td>
-                                        <td className="p-4 text-center">
-                                            <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
-                                                {item.category}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <span
-                                                className={`px-2.5 py-1 text-xs font-bold rounded-full ${item.stock <= 10
-                                                        ? 'bg-red-100 text-red-700'
-                                                        : 'bg-emerald-50 text-emerald-700'
-                                                    }`}
-                                            >
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[750px]">
+                                <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                        <th className="p-4">SKU / Code</th>
+                                        <th className="p-4">Material / Part Name</th>
+                                        <th className="p-4">Inventory Group</th>
+                                        <th className="p-4 text-center">Category</th>
+                                        <th className="p-4 text-right">Physical Stock</th>
+                                        <th className="p-4 text-right">Reserved (In Process)</th>
+                                        <th className="p-4 text-right">Total Valuation (₹)</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {filteredInventory.map((item) => (
+                                        <tr key={item.id} className="hover:bg-slate-50">
+                                            <td className="p-4 font-bold text-indigo-600">{item.itemCode}</td>
+                                            <td className="p-4 text-sm font-semibold text-slate-800">{item.name}</td>
+                                            <td className="p-4 text-sm text-slate-600">{item.groupName}</td>
+                                            <td className="p-4 text-center">
+                                                <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${item.category === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
+                                                    }`}>
+                                                    {item.category}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-right font-bold text-slate-800">
                                                 {item.stock} {item.uom}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-right text-sm font-semibold text-slate-600">
-                                            ₹{Number(item.unitCost || 0).toLocaleString('en-IN')}
-                                        </td>
-                                        <td className="p-4 text-right text-sm font-bold text-indigo-600">
-                                            ₹{Number(item.totalValue || 0).toLocaleString('en-IN')}
-                                        </td>
-                                    </tr>
-                                ))}
-                                {filteredInventory.length === 0 && (
-                                    <tr>
-                                        <td colSpan={7} className="p-12 text-center text-slate-400">
-                                            No inventory items found.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                {item.reservedInProcess > 0 ? (
+                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-bold rounded-full">
+                                                        🟡 {item.reservedInProcess} {item.uom}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-slate-400">-</span>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-right text-sm font-bold text-indigo-600">
+                                                ₹{Number(item.totalValue || 0).toLocaleString('en-IN')}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 )}
             </div>

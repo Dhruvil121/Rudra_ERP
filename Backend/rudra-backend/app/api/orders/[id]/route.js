@@ -3,6 +3,16 @@ import dbConnect from "../../../../lib/mongodb";
 import Order from "../../../models/Order";
 import { checkPermission, ACTIONS } from "../../../../lib/auth";
 
+// Helper: compute order-level priority from items
+function computeOrderPriority(items) {
+    if (!items || items.length === 0) return 'normal';
+    const hasUrgent = items.some(item => item.priority === 'urgent');
+    const allUrgent = items.every(item => item.priority === 'urgent');
+    if (allUrgent) return 'urgent';
+    if (hasUrgent) return 'mixed';
+    return 'normal';
+}
+
 // GET: Fetch a single order by ID
 export async function GET(req, { params }) {
     try {
@@ -40,6 +50,11 @@ export async function PUT(req, { params }) {
         await dbConnect();
         const { id } = await params;
         const body = await req.json();
+
+        // Auto-compute order-level priority from item priorities on update
+        if (body.items) {
+            body.orderPriority = computeOrderPriority(body.items);
+        }
 
         const updatedOrder = await Order.findByIdAndUpdate(id, body, { new: true });
 

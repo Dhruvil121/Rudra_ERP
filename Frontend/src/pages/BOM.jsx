@@ -96,7 +96,7 @@ function BOMList({ boms, onNavigate, onDelete }) {
                         </p>
                     </div>
                 </div>
-                <PermissionGuard module="inventory" action={ACTIONS.ADD}>
+                <PermissionGuard module="bom" action={ACTIONS.ADD}>
                     <button
                         onClick={() => onNavigate('form')}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 shadow-sm"
@@ -165,7 +165,7 @@ function BOMList({ boms, onNavigate, onDelete }) {
                                     </span>
                                 </td>
                                 <td className="p-4 flex justify-end gap-2">
-                                    <PermissionGuard module="inventory" action={ACTIONS.EDIT}>
+                                    <PermissionGuard module="bom" action={ACTIONS.EDIT}>
                                         <button
                                             onClick={() => onNavigate('form', bom)}
                                             className="p-1.5 text-slate-400 hover:text-blue-600"
@@ -173,7 +173,7 @@ function BOMList({ boms, onNavigate, onDelete }) {
                                             <Edit2 className="w-4 h-4" />
                                         </button>
                                     </PermissionGuard>
-                                    <PermissionGuard module="inventory" action={ACTIONS.DELETE}>
+                                    <PermissionGuard module="bom" action={ACTIONS.DELETE}>
                                         <button
                                             onClick={() => handleDelete(bom)}
                                             className="p-1.5 text-slate-400 hover:text-red-600"
@@ -493,12 +493,14 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                     >
                         <X className="w-4 h-4" /> Cancel
                     </button>
-                    <button
-                        onClick={handleSave}
-                        className="flex items-center gap-1.5 px-5 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 shadow-sm"
-                    >
-                        <Check className="w-4 h-4" /> Save & Sync Recipe
-                    </button>
+                    <PermissionGuard module="bom" action={isEditing ? ACTIONS.EDIT : ACTIONS.ADD}>
+                        <button
+                            onClick={handleSave}
+                            className="flex items-center gap-1.5 px-5 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 shadow-sm"
+                        >
+                            <Check className="w-4 h-4" /> Save & Sync Recipe
+                        </button>
+                    </PermissionGuard>
                 </div>
             </div>
 

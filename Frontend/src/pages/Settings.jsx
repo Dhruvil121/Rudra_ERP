@@ -87,8 +87,8 @@ export default function SettingsModule() {
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`flex items-center gap-2 px-4 py-1.5 rounded-md font-semibold text-xs transition-all ${activeTab === tab.id
-                                            ? 'bg-white text-indigo-600 shadow-sm'
-                                            : 'text-slate-500 hover:text-slate-700'
+                                        ? 'bg-white text-indigo-600 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
                                         }`}
                                 >
                                     <Icon className="w-3.5 h-3.5" />
@@ -171,7 +171,8 @@ function UserManagementTab({ searchTerm }) {
 
     return (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <table className="w-full text-left border-collapse">
+            <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[700px]">
                 <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
                         <th className="p-4">Manager Name</th>
@@ -273,6 +274,7 @@ function UserManagementTab({ searchTerm }) {
                     )}
                 </tbody>
             </table>
+            </div>
         </div>
     );
 }
@@ -409,6 +411,17 @@ function ModuleAccessTab({ searchTerm }) {
                 const perms = u.permissions instanceof Map
                     ? Object.fromEntries(u.permissions)
                     : (u.permissions || {});
+                
+                // Synchronize BOM / bom permissions if either is present
+                const bomPerms = Array.from(new Set([
+                    ...(Array.isArray(perms.BOM) ? perms.BOM : []),
+                    ...(Array.isArray(perms.bom) ? perms.bom : [])
+                ]));
+                if (perms.BOM !== undefined || perms.bom !== undefined) {
+                    perms.BOM = bomPerms;
+                    perms.bom = bomPerms;
+                }
+
                 permMap[u._id] = { ...perms };
             });
             setLocalPermissions(permMap);
@@ -441,28 +454,56 @@ function ModuleAccessTab({ searchTerm }) {
             const modulePerms = [...(userPerms[module] || [])];
             const hasPerm = modulePerms.includes(action);
 
-            userPerms[module] = hasPerm
+            const updatedPerms = hasPerm
                 ? modulePerms.filter(p => p !== action)
                 : [...modulePerms, action];
+
+            userPerms[module] = updatedPerms;
+
+            // Keep BOM and bom in sync
+            if (String(module).toLowerCase() === 'bom') {
+                userPerms.BOM = updatedPerms;
+                userPerms.bom = updatedPerms;
+            }
 
             return { ...prev, [userId]: userPerms };
         });
         setSaveMessages(prev => ({ ...prev, [userId]: null }));
     };
-
     const toggleModuleAll = (userId, moduleId, allActions) => {
         setLocalPermissions(prev => {
             const userPerms = { ...(prev[userId] || {}) };
-            const modulePerms = userPerms[moduleId] || [];
-            const allGranted = allActions.every(a => modulePerms.includes(a));
-            userPerms[moduleId] = allGranted ? [] : [...allActions];
+            const currentPerms = userPerms[moduleId] || [];
+            const customStepPerms = currentPerms.filter(p => !allActions.includes(p));
+            const allGranted = allActions.every(a => currentPerms.includes(a));
+
+            const updatedPerms = allGranted
+                ? [...customStepPerms]
+                : [...new Set([...customStepPerms, ...allActions])];
+
+            userPerms[moduleId] = updatedPerms;
+
+            // Keep BOM and bom in sync
+            if (String(moduleId).toLowerCase() === 'bom') {
+                userPerms.BOM = updatedPerms;
+                userPerms.bom = updatedPerms;
+            }
+
             return { ...prev, [userId]: userPerms };
         });
         setSaveMessages(prev => ({ ...prev, [userId]: null }));
     };
 
     const savePermissions = async (manager) => {
-        const permissions = localPermissions[manager._id] || {};
+        const permissions = { ...(localPermissions[manager._id] || {}) };
+        if (permissions.BOM !== undefined || permissions.bom !== undefined) {
+            const bomPerms = Array.from(new Set([
+                ...(Array.isArray(permissions.BOM) ? permissions.BOM : []),
+                ...(Array.isArray(permissions.bom) ? permissions.bom : [])
+            ]));
+            permissions.BOM = bomPerms;
+            permissions.bom = bomPerms;
+        }
         try {
             await updateMutation.mutateAsync({ userId: manager._id, permissions });
             setSaveMessages(prev => ({ ...prev, [manager._id]: { type: 'success', text: 'Saved!' } }));
@@ -531,8 +572,8 @@ function ModuleAccessTab({ searchTerm }) {
                                                 <button
                                                     onClick={() => toggleModuleAll(manager._id, mod.id, mod.actions)}
                                                     className={`text-xs font-bold px-2 py-0.5 rounded transition-colors ${allGranted
-                                                            ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
-                                                            : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                                                        ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
+                                                        : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
                                                         }`}
                                                 >
                                                     {allGranted ? 'Revoke All' : 'Grant All'}
@@ -715,8 +756,8 @@ function ProcessAccessTab({ searchTerm }) {
                                 <button
                                     onClick={() => toggleAllProcesses(manager._id)}
                                     className={`text-xs font-bold px-3 py-1 rounded transition-colors ${allGranted
-                                            ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
-                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                        ? 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
+                                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                                         }`}
                                 >
                                     {allGranted ? 'Revoke All Steps' : 'Grant All Steps'}
@@ -735,8 +776,8 @@ function ProcessAccessTab({ searchTerm }) {
                                         <label
                                             key={processName}
                                             className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all ${isGranted
-                                                    ? 'border-indigo-200 bg-indigo-50/70 shadow-sm'
-                                                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                                                ? 'border-indigo-200 bg-indigo-50/70 shadow-sm'
+                                                : 'border-slate-200 bg-white hover:bg-slate-50'
                                                 }`}
                                         >
                                             <input

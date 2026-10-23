@@ -3,6 +3,16 @@ import dbConnect from "../../../lib/mongodb";
 import Order from "../../models/Order"
 import { checkPermission, ACTIONS } from "../../../lib/auth"
 
+// Helper: compute order-level priority from items
+function computeOrderPriority(items) {
+    if (!items || items.length === 0) return 'normal';
+    const hasUrgent = items.some(item => item.priority === 'urgent');
+    const allUrgent = items.every(item => item.priority === 'urgent');
+    if (allUrgent) return 'urgent';
+    if (hasUrgent) return 'mixed';
+    return 'normal';
+}
+
 export async function GET(req) {
     try {
         // Orders are viewed from both the Order module AND the Process module.
@@ -35,6 +45,9 @@ export async function POST(req) {
             const count = await Order.countDocuments();
             body.piNo = `PI-${1000 + count + 1}`;
         }
+
+        // Auto-compute order-level priority from item priorities
+        body.orderPriority = computeOrderPriority(body.items);
 
         const newOrder = await Order.create(body);
         return NextResponse.json(newOrder, { status: 201 });

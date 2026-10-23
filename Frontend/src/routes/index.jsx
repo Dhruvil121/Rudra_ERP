@@ -1,5 +1,4 @@
-import { BrowserRouter, createBrowserRouter, NavLink } from "react-router-dom";
-import MainLayout from "../layout/MainLayout";
+import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 import Dashboard from "../pages/Dashboard";
 import Products from "../pages/Products";
 import Orders from "../pages/Orders";
@@ -11,27 +10,25 @@ import AssemblingModule from "../pages/Assembling";
 import ReportsModule from "../pages/Reports";
 import SettingsModule from "../pages/Settings";
 import MarketplaceLeads from "../pages/MarketplaceLeads";
-import { useAuth } from "../context/AuthContext";
-import { ACTIONS } from "../context/AuthContext";
+import { useAuth, ACTIONS } from "../context/AuthContext";
 import Login from "../pages/Login";
-import { Navigate, Outlet } from "react-router-dom";
 import BOM from "../pages/BOM";
-
 
 const ProtectedRoute = ({ module }) => {
     const { user, hasPermission, loading } = useAuth();
 
-    // Don't redirect while initial auth check is loading
+    // Wait while localStorage session is being restored on page refresh
     if (loading) return null;
 
     if (!user) return <Navigate to="/login" replace />;
-    if (module && !hasPermission(module, ACTIONS.VIEW)) {
+
+    // Always normalize module key to lowercase so "BOM" matches "bom" in user.permissions
+    if (module && !hasPermission(module.toLowerCase(), ACTIONS.VIEW)) {
         return <Navigate to="/" replace />;
     }
 
     return <Outlet />;
 };
-
 
 const router = createBrowserRouter([
     { path: "/login", element: <Login /> },
@@ -48,109 +45,67 @@ const router = createBrowserRouter([
                     },
                     {
                         path: "/orders",
-                        element: <ProtectedRoute module={"order"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <Orders />
-                            }
-                        ]
+                        element: <ProtectedRoute module="order" />,
+                        children: [{ index: true, element: <Orders /> }]
                     },
                     {
                         path: "/customers",
-                        element: <ProtectedRoute module={"customer"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <Customers />
-                            }
-                        ]
+                        element: <ProtectedRoute module="customer" />,
+                        children: [{ index: true, element: <Customers /> }]
                     },
                     {
                         path: "/products",
-                        element: <ProtectedRoute module={"product"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <Products />
-                            }
-                        ]
+                        element: <ProtectedRoute module="product" />,
+                        children: [{ index: true, element: <Products /> }]
                     },
                     {
                         path: "/inventory",
-                        element: <ProtectedRoute module={"inventory"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <InventoryModule />
-                            }
-                        ]
+                        element: <ProtectedRoute module="inventory" />,
+                        children: [{ index: true, element: <InventoryModule /> }]
                     },
                     {
                         path: "/process",
-                        element: <ProtectedRoute module={"process"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <ProcessModule />
-                            }
-                        ]
+                        element: <ProtectedRoute module="process" />,
+                        children: [{ index: true, element: <ProcessModule /> }]
                     },
                     {
                         path: "/assembling",
-                        element: <ProtectedRoute module={"assembling"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <AssemblingModule />
-                            }
-                        ]
+                        element: <ProtectedRoute module="assembling" />,
+                        children: [{ index: true, element: <AssemblingModule /> }]
                     },
                     {
                         path: "/reports",
-                        element: <ProtectedRoute module={"reports"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <ReportsModule />
-                            }
-                        ]
+                        element: <ProtectedRoute module="reports" />,
+                        children: [{ index: true, element: <ReportsModule /> }]
                     },
                     {
                         path: "/leads",
-                        element: <ProtectedRoute module={"leads"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <MarketplaceLeads />
-                            }
-                        ]
+                        element: <ProtectedRoute module="leads" />,
+                        children: [{ index: true, element: <MarketplaceLeads /> }]
                     },
                     {
                         path: "/settings",
                         element: <ProtectedRoute />,
-                        children: [
-                            {
-                                index: true,
-                                element: <SettingsModule />
-                            }
-                        ]
+                        children: [{ index: true, element: <SettingsModule /> }]
                     },
                     {
                         path: "/BOM",
-                        element: <ProtectedRoute module={"BOM"} />,
-                        children: [
-                            {
-                                index: true,
-                                element: <BOM />
-                            }
-                        ]
+                        element: <ProtectedRoute module="bom" />,
+                        children: [{ index: true, element: <BOM /> }]
+                    },
+                    {
+                        path: "/bom",
+                        element: <ProtectedRoute module="bom" />,
+                        children: [{ index: true, element: <BOM /> }]
+                    },
+                    {
+                        path: "*",
+                        element: <Navigate to="/" replace />
                     }
                 ]
             }
         ]
     }
-])
+]);
 
-export default router
-
+export default router;

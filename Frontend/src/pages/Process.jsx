@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
     ClipboardList, Factory, Package, Trash2, Archive, Settings,
-    X, GripVertical, Loader2, Plus, Pencil, Lock, ShieldAlert, Check, Sparkles, ArrowRight
+    X, GripVertical, Loader2, Plus, Pencil, Lock, ShieldAlert, Check, Sparkles,
+    AlertTriangle, Truck, RotateCcw
 } from "lucide-react";
 import {
     DndContext, closestCenter, KeyboardSensor, PointerSensor,
@@ -16,8 +17,14 @@ import { CSS } from "@dnd-kit/utilities";
 // Data Hooks & Auth
 import { useAuth } from "../context/AuthContext";
 import { useOrders } from "../hooks/useOrderData";
-import { useProcessSequence, useSaveProcessSequence } from "../hooks/useProcessData";
+import {
+    useProcessSequence,
+    useAllProcessSequences,
+    useSaveProcessSequence,
+    useDispatchOrder
+} from "../hooks/useProcessData";
 import { useCalculateOrderBOM } from "../hooks/useBOMData";
+import { useInventory, useReserveRejected, useReleaseRejected } from "../hooks/useInventoryData";
 import { useFeedback } from "../context/FeedbackContext";
 
 const ALL_FIELDS = [
@@ -75,12 +82,27 @@ export default function ProcessModule() {
 }
 
 // ==========================================
-// 1. ORDERS LIST (Synced to BOM & Settings Layout)
+// 1. ORDERS LIST (Urgent First + Priority Breakdown)
 // ==========================================
+const PROCESS_STATUS_STYLES = {
+    Pending: 'bg-orange-100 text-orange-700',
+    Approved: 'bg-green-100 text-green-700',
+    Dispatched: 'bg-blue-100 text-blue-700',
+};
+
 function ProcessOrdersList({ orders, loading, onOpen }) {
+    const sortedOrders = useMemo(() => {
+        return [...orders].sort((a, b) => {
+            const priorityOrder = { urgent: 0, mixed: 1, normal: 2 };
+            const pa = priorityOrder[a.orderPriority] ?? 2;
+            const pb = priorityOrder[b.orderPriority] ?? 2;
+            if (pa !== pb) return pa - pb;
+            return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+    }, [orders]);
+
     return (
-        <div className="space-y-4 max-w-7xl mx-auto">
-            {/* Top Header */}
+        <div className="space-y-4 max-w-7xl mx-auto pb-12">
             <div className="flex justify-between items-center pb-4 border-b border-slate-200">
                 <div className="flex items-center gap-3">
                     <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
@@ -88,73 +110,109 @@ function ProcessOrdersList({ orders, loading, onOpen }) {
                     </div>
                     <div>
                         <h1 className="text-xl font-bold text-slate-800">Process Orders</h1>
-                        <p className="text-sm text-slate-500">Select an order to start or update the manufacturing process</p>
+                        <p className="text-sm text-slate-500">
+                            Urgent ("Pehla Maal") orders are prioritized at the top • Select an order to manage size-wise process flows
+                        </p>
                     </div>
                 </div>
             </div>
 
-            {/* Orders Table */}
             {loading ? (
                 <div className="flex justify-center p-12">
                     <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                 </div>
             ) : (
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                <th className="p-4">Order ID (PI No.)</th>
-                                <th className="p-4">Client Name</th>
-                                <th className="p-4">Brand</th>
-                                <th className="p-4">Product (Rudra Code)</th>
-                                <th className="p-4 text-center">Quantity</th>
-                                <th className="p-4">Status</th>
-                                <th className="p-4 text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {orders.map((order) => (
-                                <tr key={order._id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="p-4 font-bold text-blue-600">{order.piNo}</td>
-                                    <td className="p-4 text-sm font-semibold text-slate-800">{order.name}</td>
-                                    <td className="p-4 text-sm text-slate-600">{order.brandName || "-"}</td>
-                                    <td className="p-4 text-sm font-bold text-indigo-600">
-                                        {order.items?.map(i => i.rudraCode).filter(Boolean).join(", ") || "-"}
-                                    </td>
-                                    <td className="p-4 text-center">
-                                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
-                                            {order.items?.reduce((acc, item) => acc + Number(item.qty || 0), 0)} Sets
-                                        </span>
-                                    </td>
-                                    <td className="p-4">
-                                        <span
-                                            className={`px-2.5 py-1 text-xs font-bold rounded-full uppercase ${order.status === "Pending"
-                                                    ? "bg-orange-100 text-orange-700"
-                                                    : "bg-green-100 text-green-700"
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse min-w-[750px]">
+                            <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                    <th className="p-4 w-8"></th>
+                                    <th className="p-4">Order ID (PI No.)</th>
+                                    <th className="p-4">Client Name</th>
+                                    <th className="p-4">Products & Size Variants</th>
+                                    <th className="p-4 text-center">Urgent / Normal Qty</th>
+                                    <th className="p-4">Status</th>
+                                    <th className="p-4 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {sortedOrders.map((order) => {
+                                    const isUrgent = order.orderPriority === 'urgent';
+                                    const isMixed = order.orderPriority === 'mixed';
+                                    const urgentQty = (order.items || [])
+                                        .filter(i => i.priority === 'urgent')
+                                        .reduce((a, i) => a + Number(i.qty || 0), 0);
+                                    const normalQty = (order.items || [])
+                                        .filter(i => i.priority !== 'urgent')
+                                        .reduce((a, i) => a + Number(i.qty || 0), 0);
+
+                                    return (
+                                        <tr
+                                            key={order._id}
+                                            className={`hover:bg-slate-50 transition-colors ${isUrgent
+                                                    ? 'border-l-4 border-red-500 bg-red-50/30'
+                                                    : isMixed
+                                                        ? 'border-l-4 border-amber-400 bg-amber-50/20'
+                                                        : ''
                                                 }`}
                                         >
-                                            {order.status}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 text-right">
-                                        <button
-                                            onClick={() => onOpen(order)}
-                                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
-                                        >
-                                            Open Process
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                            {orders.length === 0 && (
-                                <tr>
-                                    <td colSpan={7} className="p-12 text-center text-slate-400">
-                                        No process orders available.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+                                            <td className="p-4 text-center">
+                                                {isUrgent && <AlertTriangle className="w-4 h-4 text-red-500 animate-pulse" />}
+                                                {isMixed && <AlertTriangle className="w-4 h-4 text-amber-500" />}
+                                            </td>
+                                            <td className="p-4 font-bold text-blue-600">{order.piNo}</td>
+                                            <td className="p-4">
+                                                <div className="text-sm font-semibold text-slate-800">{order.name}</div>
+                                                <div className="text-xs text-slate-400">{order.brandName || '-'}</div>
+                                            </td>
+                                            <td className="p-4 text-xs font-bold text-indigo-600">
+                                                {(order.items || [])
+                                                    .map(i => `${i.rudraCode}${i.size ? ` (${i.size}: ${i.qty})` : ` (${i.qty})`}`)
+                                                    .join(', ') || '-'}
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                                    {urgentQty > 0 && (
+                                                        <span className="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full">
+                                                            🔴 {urgentQty} Urgent
+                                                        </span>
+                                                    )}
+                                                    {normalQty > 0 && (
+                                                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full">
+                                                            {normalQty} Normal
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className={`px-2.5 py-1 text-xs font-bold rounded-full uppercase ${PROCESS_STATUS_STYLES[order.status] || 'bg-orange-100 text-orange-700'}`}>
+                                                        {order.status}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <button
+                                                    onClick={() => onOpen(order)}
+                                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+                                                >
+                                                    Open Process
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {orders.length === 0 && (
+                                    <tr>
+                                        <td colSpan={7} className="p-12 text-center text-slate-400">
+                                            No process orders available.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             )}
         </div>
@@ -162,31 +220,127 @@ function ProcessOrdersList({ orders, loading, onOpen }) {
 }
 
 // ==========================================
-// 2. PROCESS DETAIL & BOM IN-HOUSE SYNC
+// 2. PROCESS DETAIL (True Per-Size/Per-Variant Pipelines + Rejected Stock Soft-Hold)
 // ==========================================
 function ProcessDetail({ order, onBack }) {
     const { hasPermission, hasProcessStepPermission, isAdmin } = useAuth();
     const [showProcessModal, setShowProcessModal] = useState(false);
-    const { data: remoteSequence, isLoading } = useProcessSequence(order._id);
-    const { data: bomData, isLoading: bomLoading } = useCalculateOrderBOM(order);
+
+    // Fetch both legacy single sequence AND all variant sequences for multi-size / urgent-split orders
+    const { data: defaultSequence, isLoading: singleLoading } = useProcessSequence(order._id);
+    const { data: allSequences = [], isLoading: allLoading } = useAllProcessSequences(order._id);
+    const { data: inventoryGroups = [] } = useInventory();
+
     const saveMutation = useSaveProcessSequence();
-    const { showToast } = useFeedback();
+    const dispatchMutation = useDispatchOrder();
+    const reserveRejectedMutation = useReserveRejected();
+    const releaseRejectedMutation = useReleaseRejected();
+    const { showToast, showConfirm } = useFeedback();
+
+    // Build Variant Tabs (Each line item—e.g. 4mm screw, 6mm screw, or 20 Urgent vs 130 Normal—gets a tab)
+    const orderVariants = useMemo(() => {
+        const items = order.items || [];
+        return items
+            .map((item, idx) => ({
+                variantKey: String(item._id || item.id || `item-${idx}`),
+                rudraCode: item.rudraCode || 'ITEM',
+                size: item.size || `Batch ${idx + 1}`,
+                qty: Number(item.qty || 0),
+                priority: item.priority || 'normal',
+                rawItem: item
+            }))
+            .sort((a, b) => (a.priority === 'urgent' ? -1 : 1) - (b.priority === 'urgent' ? -1 : 1));
+    }, [order.items]);
+
+    // Default to the first Urgent variant if multiple variants exist, or 'all' if single item
+    const [activeVariantKey, setActiveVariantKey] = useState(() =>
+        orderVariants.length > 1 ? orderVariants[0].variantKey : 'all'
+    );
+
+    const activeVariant = useMemo(() => {
+        if (activeVariantKey === 'all') return null;
+        return orderVariants.find(v => v.variantKey === activeVariantKey) || null;
+    }, [activeVariantKey, orderVariants]);
+
+    // Calculate BOM dynamically for the currently selected variant (or whole order if 'all' tab)
+    const scopedOrderForBOM = useMemo(() => {
+        if (!activeVariant) return order;
+        return {
+            ...order,
+            _id: `${order._id}_${activeVariant.variantKey}`,
+            items: [activeVariant.rawItem]
+        };
+    }, [order, activeVariant]);
+
+    const { data: bomData, isLoading: bomLoading } = useCalculateOrderBOM(scopedOrderForBOM);
+
+    // Resolve the active sequence & rejectedUsage for the currently selected Size/Priority tab
+    const activeRemoteDoc = useMemo(() => {
+        if (activeVariantKey === 'all') {
+            return (
+                allSequences.find(s => !s.orderItemId) ||
+                defaultSequence ||
+                allSequences[0] ||
+                null
+            );
+        }
+        return (
+            allSequences.find(
+                s =>
+                    s.orderItemId === activeVariantKey ||
+                    (activeVariant?.size && s.sizeVariant === activeVariant.size && s.priority === activeVariant.priority)
+            ) || null
+        );
+    }, [activeVariantKey, activeVariant, allSequences, defaultSequence]);
 
     const [sequence, setSequence] = useState([]);
-    const [hasLoaded, setHasLoaded] = useState(false);
+    const [rejectedUsage, setRejectedUsage] = useState([]);
 
-    const canConfigureSteps = isAdmin;
+    // Sync local state whenever the user switches Size/Variant tabs or data loads
+    useEffect(() => {
+        if (activeRemoteDoc) {
+            setSequence(activeRemoteDoc.steps || []);
+            setRejectedUsage(activeRemoteDoc.rejectedUsage || []);
+        } else {
+            setSequence([]);
+            setRejectedUsage([]);
+        }
+    }, [activeRemoteDoc, activeVariantKey]);
+
+    // Find rejected pieces available in inventory
+    const availableRejectedPieces = useMemo(() => {
+        const rudraCodesInOrder = [
+            ...new Set((order.items || []).map(i => i.rudraCode?.toUpperCase()).filter(Boolean))
+        ];
+        const rejected = [];
+        inventoryGroups.forEach(group => {
+            (group.subItems || []).forEach(sub => {
+                if (sub.category === 'Rejected' && Number(sub.stock || 0) > 0) {
+                    const available = Math.max(0, Number(sub.stock || 0) - Number(sub.reservedInProcess || 0));
+                    rejected.push({
+                        inventoryGroupId: group._id,
+                        inventorySubItemId: sub._id,
+                        itemCode: sub.itemCode,
+                        itemName: sub.name,
+                        availableQty: available,
+                        totalStock: Number(sub.stock || 0),
+                        reservedInProcess: Number(sub.reservedInProcess || 0),
+                        matchesOrder: rudraCodesInOrder.includes(sub.itemCode?.toUpperCase())
+                    });
+                }
+            });
+        });
+        return rejected.sort((a, b) => (b.matchesOrder ? 1 : 0) - (a.matchesOrder ? 1 : 0));
+    }, [inventoryGroups, order.items]);
+
+    const canConfigureSteps =
+        isAdmin || hasPermission("process", "add") || hasPermission("process", "edit");
     const canSave =
         isAdmin ||
+        hasPermission("process", "add") ||
+        hasPermission("process", "edit") ||
         (hasPermission("process", "view") &&
             sequence.some((step) => hasProcessStepPermission(step.processName)));
-
-    useEffect(() => {
-        if (remoteSequence && !hasLoaded) {
-            setSequence(remoteSequence.steps || []);
-            setHasLoaded(true);
-        }
-    }, [remoteSequence, hasLoaded]);
 
     const calculateStepFields = (rawFields) => {
         const newFields = { ...rawFields };
@@ -214,39 +368,49 @@ function ProcessDetail({ order, onBack }) {
         setSequence((prev) =>
             prev.map((step) => {
                 if (step.stepId !== stepId) return step;
-
                 if (!isAdmin && !hasProcessStepPermission(step.processName)) {
                     return step;
                 }
-
                 const updatedFields = calculateStepFields({
                     ...step.fields,
                     [fieldKey]: value,
                 });
-
                 return { ...step, fields: updatedFields };
             })
         );
     };
 
+    const persistCurrentSequence = async (stepsToSave, rejectedToSave = rejectedUsage) => {
+        return await saveMutation.mutateAsync({
+            orderId: order._id,
+            sequence: stepsToSave,
+            orderItemId: activeVariant ? activeVariant.variantKey : undefined,
+            sizeVariant: activeVariant ? activeVariant.size : undefined,
+            priority: activeVariant ? activeVariant.priority : (order.orderPriority || 'normal'),
+            rejectedUsage: rejectedToSave
+        });
+    };
+
     const handleSyncFromBOM = async () => {
         const inHouseParts = bomData?.inHouseParts || [];
         if (inHouseParts.length === 0) {
-            showToast("No In-House BOM parts found for this order's Rudra Code.", "warning");
+            showToast("No In-House BOM parts found for this Rudra Code.", "warning");
             return;
         }
 
+        const variantLabel = activeVariant ? ` (${activeVariant.size})` : "";
         const generatedSteps = inHouseParts.map((part) => {
-            const stepName = part.processName
+            const baseName = part.processName
                 ? `${part.fieldName} - ${part.processName}`
                 : part.fieldName;
 
             return {
                 stepId: generateId(),
-                processName: stepName,
+                processName: `${baseName}${variantLabel}`,
                 processType: "custom",
-                activeFields: ["inputQty", "kg", "rejection", "extra", "output", "rate", "totalCost"],
+                activeFields: ["size", "inputQty", "kg", "rejection", "extra", "output", "rate", "totalCost"],
                 fields: calculateStepFields({
+                    size: activeVariant?.size || "",
                     inputQty: part.requiredPieces || 0,
                     kg: part.totalWeightKg || 0,
                     rejection: 0,
@@ -259,8 +423,11 @@ function ProcessDetail({ order, onBack }) {
         setSequence(merged);
 
         try {
-            await saveMutation.mutateAsync({ orderId: order._id, sequence: merged });
-            showToast("Synced BOM In-House Parts into Process Flow!", "success");
+            await persistCurrentSequence(merged, rejectedUsage);
+            showToast(
+                `Synced BOM parts for ${activeVariant ? `${activeVariant.rudraCode} (${activeVariant.size})` : "Order"}!`,
+                "success"
+            );
         } catch (e) {
             showToast("Error syncing BOM parts: " + e.message, "error");
         }
@@ -268,10 +435,87 @@ function ProcessDetail({ order, onBack }) {
 
     const handleSave = async () => {
         try {
-            await saveMutation.mutateAsync({ orderId: order._id, sequence });
+            await persistCurrentSequence(sequence, rejectedUsage);
             showToast("Process details saved successfully!", "success");
         } catch (e) {
             showToast("Error saving: " + e.message, "error");
+        }
+    };
+
+    // Problem 3: Soft-Reserve Rejected Pieces from Inventory & Immediately Save to ProcessSequence
+    const handleUseRejected = async (rejItem, quantity) => {
+        if (quantity <= 0 || quantity > rejItem.availableQty) {
+            showToast(`Invalid quantity. Available: ${rejItem.availableQty}`, 'warning');
+            return;
+        }
+        try {
+            await reserveRejectedMutation.mutateAsync({
+                inventorySubItemId: rejItem.inventorySubItemId,
+                quantity
+            });
+
+            const nextRejectedUsage = [
+                ...rejectedUsage,
+                {
+                    inventoryGroupId: rejItem.inventoryGroupId,
+                    inventorySubItemId: rejItem.inventorySubItemId,
+                    itemCode: rejItem.itemCode,
+                    itemName: rejItem.itemName,
+                    quantity,
+                    confirmed: false
+                }
+            ];
+            setRejectedUsage(nextRejectedUsage);
+
+            // Immediately persist to ProcessSequence so it is tracked for Dispatch
+            await persistCurrentSequence(sequence, nextRejectedUsage);
+
+            showToast(
+                `Soft-reserved ${quantity} Pcs of ${rejItem.itemCode} (Used in Process — will deduct from Inventory on Dispatch)`,
+                'success'
+            );
+        } catch (e) {
+            showToast(e.message || 'Failed to reserve rejected pieces', 'error');
+        }
+    };
+
+    // Release soft-reserved rejected pieces back to Inventory if needed before dispatch
+    const handleReleaseRejectedItem = async (usageItem, idx) => {
+        try {
+            await releaseRejectedMutation.mutateAsync({
+                rejectedUsages: [{ inventorySubItemId: usageItem.inventorySubItemId, quantity: usageItem.quantity }]
+            });
+            const nextRejectedUsage = rejectedUsage.filter((_, i) => i !== idx);
+            setRejectedUsage(nextRejectedUsage);
+            await persistCurrentSequence(sequence, nextRejectedUsage);
+            showToast(`Released ${usageItem.quantity} Pcs of ${usageItem.itemCode} back to available stock`, 'info');
+        } catch (e) {
+            showToast(e.message || 'Failed to release rejected stock', 'error');
+        }
+    };
+
+    const handleDispatch = async () => {
+        const unconfirmedCount = rejectedUsage
+            .filter(r => !r.confirmed)
+            .reduce((sum, r) => sum + Number(r.quantity || 0), 0);
+
+        const isConfirmed = await showConfirm({
+            title: 'Confirm Order Dispatch',
+            message: `Confirm dispatch for Order ${order.piNo}? This will mark the order as Dispatched and permanently deduct ${unconfirmedCount} soft-reserved rejected piece(s) from Inventory.`,
+            type: 'info',
+            confirmText: 'Confirm Dispatch'
+        });
+        if (!isConfirmed) return;
+        try {
+            // Save latest sequence state before dispatching
+            if (sequence.length > 0) {
+                await persistCurrentSequence(sequence, rejectedUsage);
+            }
+            await dispatchMutation.mutateAsync({ orderId: order._id });
+            showToast('Order Dispatched! Soft-reserved rejected pieces permanently deducted from Inventory.', 'success');
+            onBack();
+        } catch (e) {
+            showToast(e.message || 'Failed to dispatch', 'error');
         }
     };
 
@@ -285,7 +529,7 @@ function ProcessDetail({ order, onBack }) {
         setShowProcessModal(false);
 
         try {
-            await saveMutation.mutateAsync({ orderId: order._id, sequence: normalizedSeq });
+            await persistCurrentSequence(normalizedSeq, rejectedUsage);
             showToast("Process sequence updated successfully!", "success");
         } catch (e) {
             showToast("Failed to save sequence structure: " + e.message, "error");
@@ -304,8 +548,9 @@ function ProcessDetail({ order, onBack }) {
     });
 
     const inHouseParts = bomData?.inHouseParts || [];
+    const isDispatched = order.status === 'Dispatched' || activeRemoteDoc?.status === 'Dispatched';
 
-    if (isLoading && !hasLoaded) {
+    if (singleLoading && allLoading) {
         return (
             <div className="flex justify-center p-24">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -315,16 +560,36 @@ function ProcessDetail({ order, onBack }) {
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto pb-24">
-            {/* Top Header — Clean Layout */}
-            <div className="flex justify-between items-center pb-4 border-b border-slate-200">
+            {/* Top Header */}
+            <div className="flex flex-wrap justify-between items-center gap-4 pb-4 border-b border-slate-200">
                 <div className="flex items-center gap-3">
-                    <div className="p-3 bg-blue-100 text-blue-600 rounded-xl">
+                    <div className={`p-3 rounded-xl ${order.orderPriority === 'urgent' ? 'bg-red-100 text-red-600' :
+                            order.orderPriority === 'mixed' ? 'bg-amber-100 text-amber-600' :
+                                'bg-blue-100 text-blue-600'
+                        }`}>
                         <ClipboardList className="w-6 h-6" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-slate-800">Process Flow: {order.piNo}</h1>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h1 className="text-xl font-bold text-slate-800">Process Flow: {order.piNo}</h1>
+                            {order.orderPriority === 'urgent' && (
+                                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase animate-pulse">
+                                    🔴 URGENT ORDER
+                                </span>
+                            )}
+                            {order.orderPriority === 'mixed' && (
+                                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full uppercase">
+                                    ⚡ URGENT SPLIT ORDER
+                                </span>
+                            )}
+                            {isDispatched && (
+                                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase">
+                                    ✅ DISPATCHED
+                                </span>
+                            )}
+                        </div>
                         <p className="text-sm text-slate-500">
-                            Client: <span className="font-semibold text-slate-700">{order.name}</span> ({order.partyCode || 'N/A'}) • Qty: {order.items?.reduce((a, i) => a + Number(i.qty || 0), 0)} Sets
+                            Client: <span className="font-semibold text-slate-700">{order.name}</span> ({order.partyCode || 'N/A'}) • Total Order Qty: {order.items?.reduce((a, i) => a + Number(i.qty || 0), 0)} Sets
                         </p>
                     </div>
                 </div>
@@ -335,7 +600,7 @@ function ProcessDetail({ order, onBack }) {
                     >
                         ← Back to Orders
                     </button>
-                    {canSave && (
+                    {!isDispatched && canSave && (
                         <button
                             onClick={handleSave}
                             disabled={saveMutation.isPending || sequence.length === 0}
@@ -345,10 +610,78 @@ function ProcessDetail({ order, onBack }) {
                             Save Process
                         </button>
                     )}
+                    {!isDispatched && canSave && (
+                        <button
+                            onClick={handleDispatch}
+                            disabled={dispatchMutation.isPending}
+                            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow-sm flex items-center gap-2 disabled:opacity-50 transition-colors"
+                        >
+                            {dispatchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />}
+                            Confirm Dispatch
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* BOM In-House Factory Parts Banner */}
+            {/* Problem 1 & 2: Multi-Size & Urgent Split Variant Selector Tabs */}
+            {orderVariants.length > 1 && (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            📐 Select Size / Priority Batch to View & Edit Its Independent Process Pipeline
+                        </label>
+                        <span className="text-xs text-slate-400 font-medium">
+                            Each size or urgent split batch has its own dedicated process flow
+                        </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {orderVariants.map((sv) => {
+                            const isSelected = activeVariantKey === sv.variantKey;
+                            const hasSavedSteps = allSequences.some(
+                                s => s.orderItemId === sv.variantKey && s.steps?.length > 0
+                            );
+                            return (
+                                <button
+                                    key={sv.variantKey}
+                                    onClick={() => setActiveVariantKey(sv.variantKey)}
+                                    className={`px-4 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 border ${isSelected
+                                            ? sv.priority === 'urgent'
+                                                ? 'bg-red-600 text-white border-red-600 shadow-sm'
+                                                : 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                            : sv.priority === 'urgent'
+                                                ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                        }`}
+                                >
+                                    {sv.priority === 'urgent' && <AlertTriangle className="w-3.5 h-3.5" />}
+                                    <span>
+                                        {sv.rudraCode} — <strong>Size: {sv.size}</strong> ({sv.qty} Pcs)
+                                    </span>
+                                    {sv.priority === 'urgent' && (
+                                        <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase ${isSelected ? 'bg-red-800 text-white' : 'bg-red-200 text-red-800'}`}>
+                                            Urgent
+                                        </span>
+                                    )}
+                                    {hasSavedSteps && (
+                                        <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-white' : 'bg-emerald-500'}`} title="Process steps configured" />
+                                    )}
+                                </button>
+                            );
+                        })}
+                        <button
+                            onClick={() => setActiveVariantKey('all')}
+                            className={`px-4 py-2.5 text-xs font-bold rounded-xl transition-all border ${activeVariantKey === 'all'
+                                    ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
+                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                                }`}
+                        >
+                            Combined Order View ({order.items?.reduce((a, i) => a + Number(i.qty || 0), 0)} Pcs)
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* BOM In-House Factory Parts Banner (Scoped to Selected Size/Urgent Variant) */}
             <div className="bg-blue-50/80 rounded-xl border border-blue-200 p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
                     <div className="flex items-center gap-2.5">
@@ -357,20 +690,23 @@ function ProcessDetail({ order, onBack }) {
                         </div>
                         <div>
                             <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                                BOM In-House Factory Parts Required (Process Module)
+                                BOM In-House Factory Parts Required{' '}
+                                {activeVariant
+                                    ? `for ${activeVariant.rudraCode} — Size ${activeVariant.size} (${activeVariant.qty} Pcs)`
+                                    : '(Full Order)'}
                             </h3>
                             <p className="text-xs text-slate-500">
-                                Calculated from BOM Recipe × Order Quantity
+                                Calculated from BOM Recipe × {activeVariant ? `Selected Variant Qty (${activeVariant.qty})` : 'Total Order Qty'}
                             </p>
                         </div>
                     </div>
-                    {canConfigureSteps && inHouseParts.length > 0 && (
+                    {!isDispatched && canConfigureSteps && inHouseParts.length > 0 && (
                         <button
                             type="button"
                             onClick={handleSyncFromBOM}
                             className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 shadow-sm transition-colors"
                         >
-                            <Sparkles className="w-3.5 h-3.5" /> Auto-Create Process Steps from BOM Parts
+                            <Sparkles className="w-3.5 h-3.5" /> Auto-Create Steps for This {activeVariant ? 'Size / Batch' : 'Order'}
                         </button>
                     )}
                 </div>
@@ -414,24 +750,148 @@ function ProcessDetail({ order, onBack }) {
                     </div>
                 ) : (
                     <p className="text-xs text-slate-500">
-                        No In-House BOM parts found for <strong>{order.items?.[0]?.rudraCode || "this order"}</strong>. Configure them in the BOM module to see required pieces here.
+                        No In-House BOM parts found for <strong>{activeVariant?.rudraCode || order.items?.[0]?.rudraCode || "this item"}</strong>.
                     </p>
                 )}
             </div>
 
-            {/* Product & Config Bar */}
+            {/* Problem 3: Rejected Stock Available Panel (Provisional Soft-Hold until Dispatch) */}
+            {(availableRejectedPieces.length > 0 || rejectedUsage.length > 0) && (
+                <div className="bg-amber-50/80 rounded-xl border border-amber-200 p-5 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-2 bg-amber-600 text-white rounded-lg">
+                                <RotateCcw className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                                    🔄 Rejected Stock Reuse (Soft-Hold in Process Until Dispatch)
+                                </h3>
+                                <p className="text-xs text-slate-600">
+                                    Pulling rejected pieces marks them as <strong>"Used in Process"</strong> across all orders. Physical stock is deducted from Inventory only when <strong>Confirm Dispatch</strong> is clicked.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {availableRejectedPieces.length > 0 && !isDispatched && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                            {availableRejectedPieces.map((rp) => (
+                                <div
+                                    key={rp.inventorySubItemId}
+                                    className={`bg-white p-3.5 rounded-lg border shadow-sm ${rp.matchesOrder ? 'border-amber-400 ring-1 ring-amber-200' : 'border-slate-200'
+                                        }`}
+                                >
+                                    <div className="flex justify-between items-start mb-1">
+                                        <div>
+                                            <span className="text-xs font-bold text-amber-700 uppercase block">{rp.itemCode}</span>
+                                            <span className="text-sm font-bold text-slate-800">{rp.itemName}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-sm font-extrabold text-emerald-700 block">
+                                                {rp.availableQty} Available
+                                            </span>
+                                            <span className="text-[10px] text-slate-400">
+                                                Total: {rp.totalStock} | In Process: {rp.reservedInProcess}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {rp.matchesOrder && (
+                                        <span className="text-[10px] px-2 py-0.5 bg-green-100 text-green-700 font-bold rounded-full mb-2 inline-block">
+                                            ✓ Matches Order Rudra Code
+                                        </span>
+                                    )}
+                                    {rp.availableQty > 0 ? (
+                                        <div className="mt-2 flex gap-2">
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                max={rp.availableQty}
+                                                placeholder="Qty to use"
+                                                id={`rej-qty-${rp.inventorySubItemId}`}
+                                                className="w-24 px-2.5 py-1 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const input = document.getElementById(`rej-qty-${rp.inventorySubItemId}`);
+                                                    const qty = Number(input?.value || 0);
+                                                    if (qty > 0) {
+                                                        handleUseRejected(rp, qty);
+                                                        input.value = '';
+                                                    } else {
+                                                        showToast('Enter a valid quantity', 'warning');
+                                                    }
+                                                }}
+                                                disabled={reserveRejectedMutation.isPending}
+                                                className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
+                                            >
+                                                Use in Process
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-amber-700 font-semibold mt-2">
+                                            All {rp.totalStock} pcs currently reserved in active processes
+                                        </p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Active Soft-Reserved Rejected Pieces in this Order/Variant */}
+                    {rejectedUsage.length > 0 && (
+                        <div className="bg-white rounded-lg border border-amber-200 p-3 space-y-2">
+                            <span className="text-xs font-bold text-slate-700 uppercase block">
+                                Rejected Pieces Used in This Process:
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                                {rejectedUsage.map((u, idx) => (
+                                    <div
+                                        key={idx}
+                                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border ${u.confirmed
+                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                : 'bg-yellow-50 text-yellow-800 border-yellow-300'
+                                            }`}
+                                    >
+                                        <span>
+                                            {u.confirmed ? '🟢 Deducted:' : '🟡 Soft-Hold (In Process):'} {u.itemCode} — {u.quantity} Pcs
+                                        </span>
+                                        {!u.confirmed && !isDispatched && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleReleaseRejectedItem(u, idx)}
+                                                className="text-red-600 hover:underline ml-1 text-[11px]"
+                                                title="Release back to Inventory"
+                                            >
+                                                Release
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Active Variant Product & Config Bar */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 flex flex-wrap items-center justify-between gap-4">
                 <div className="w-full md:w-2/3">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                        Product Rudra Code & Sets
+                        Active Process Pipeline Target
                     </label>
                     <input
-                        value={order.items?.map(i => `${i.rudraCode} (${i.qty} Sets)`).join(", ") || "Multiple Items"}
+                        value={
+                            activeVariant
+                                ? `${activeVariant.rudraCode} — Size: ${activeVariant.size} (${activeVariant.qty} Sets • ${activeVariant.priority.toUpperCase()})`
+                                : order.items?.map(i => `${i.rudraCode} (${i.qty} Sets${i.size ? ` — ${i.size}` : ''})`).join(", ") || "Multiple Items"
+                        }
                         readOnly
                         className="w-full border border-slate-200 rounded-lg px-3.5 py-2.5 bg-slate-50 font-bold text-indigo-700 text-sm"
                     />
                 </div>
-                {canConfigureSteps && (
+                {!isDispatched && canConfigureSteps && (
                     <button
                         onClick={() => setShowProcessModal(true)}
                         className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
@@ -450,14 +910,15 @@ function ProcessDetail({ order, onBack }) {
                 </div>
             )}
 
-            <h2 className="text-lg font-bold text-slate-800 uppercase tracking-wider mt-6">Process Execution Flow</h2>
+            <h2 className="text-lg font-bold text-slate-800 uppercase tracking-wider mt-6">
+                Process Execution Flow {activeVariant ? `— Size: ${activeVariant.size} (${activeVariant.qty} Pcs)` : ''}
+            </h2>
 
-            {/* Process Flow Cards */}
             <div className="space-y-6">
                 {sequence.length === 0 ? (
                     <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-400">
                         {canConfigureSteps
-                            ? "No process steps configured. Click 'Configure Sequence' or 'Auto-Create Process Steps from BOM Parts'."
+                            ? `No process steps configured for ${activeVariant ? `Size ${activeVariant.size}` : 'this order'} yet. Click 'Configure Sequence' or 'Auto-Create Steps' above.`
                             : "No process steps configured. Contact your Super Admin."}
                     </div>
                 ) : (
@@ -502,7 +963,11 @@ function ProcessDetail({ order, onBack }) {
             <ProductProcessModal
                 isOpen={showProcessModal}
                 onClose={() => setShowProcessModal(false)}
-                productName={order.items?.[0]?.rudraCode || "Product"}
+                productName={
+                    activeVariant
+                        ? `${activeVariant.rudraCode} (${activeVariant.size})`
+                        : order.items?.[0]?.rudraCode || "Product"
+                }
                 initialSequence={sequence}
                 onSave={handleModalSave}
                 showToast={showToast}
@@ -514,7 +979,7 @@ function ProcessDetail({ order, onBack }) {
 // ==========================================
 // 3. PROCESS STEP WITH CLEAN WRAP GRID
 // ==========================================
-function DynamicProcessStep({ step, index, totalSteps, onFieldChange }) {
+function DynamicProcessStep({ step, index, onFieldChange }) {
     const { hasProcessStepPermission } = useAuth();
     const isAuthorized = hasProcessStepPermission(step.processName);
 
@@ -549,7 +1014,6 @@ function DynamicProcessStep({ step, index, totalSteps, onFieldChange }) {
                 )}
             </div>
 
-            {/* Clean Grid Layout instead of forced horizontal scroll */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 pt-2">
                 {fields.map((field) => {
                     const isCalculated = field.calculated;
@@ -775,7 +1239,7 @@ function ProductProcessModal({ isOpen, onClose, productName, initialSequence, on
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                     <div>
                         <h2 className="text-xl font-bold text-slate-800">Configure Process Sequence</h2>
-                        <p className="text-sm text-slate-500">Product: {productName}</p>
+                        <p className="text-sm text-slate-500">Target Variant: {productName}</p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
                         <X size={20} />

@@ -62,13 +62,24 @@ export async function POST(req) {
         // Hash the password (10 salt rounds — industry standard)
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        // Ensure BOM and bom permissions are synchronized
+        let userPermissions = permissions ? { ...permissions } : {};
+        if (userPermissions.BOM !== undefined || userPermissions.bom !== undefined) {
+            const bomPerms = Array.from(new Set([
+                ...(Array.isArray(userPermissions.BOM) ? userPermissions.BOM : []),
+                ...(Array.isArray(userPermissions.bom) ? userPermissions.bom : [])
+            ]));
+            userPermissions.BOM = bomPerms;
+            userPermissions.bom = bomPerms;
+        }
+
         // Force role to 'manager' — cannot create super_admin via API
         const newUser = new User({
             name: name.trim(),
             email: email.toLowerCase().trim(),
             password: hashedPassword,
             role: 'manager',
-            permissions: permissions || {},
+            permissions: userPermissions,
         });
 
         await newUser.save();

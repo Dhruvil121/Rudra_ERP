@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dbConnect from "../../../../lib/mongodb";
 import User from "../../../models/User";
+import { normalizePermissionsMap } from "../../../../lib/auth";
 
 const JWT_SECRET = process.env.NEXTAUTH_SECRET || "rudra-erp-secret-key";
 
@@ -40,7 +41,7 @@ export async function POST(req) {
             email: user.email,
             name: user.name,
             role: user.role,
-            permissions: Object.fromEntries(user.permissions),
+            permissions: normalizePermissionsMap(user.permissions),
         };
 
         // Sign a JWT token with 7-day expiry

@@ -19,7 +19,16 @@ export async function PUT(req, { params }) {
         const updateData = {};
 
         if (body.permissions !== undefined) {
-            updateData.permissions = body.permissions;
+            const perms = { ...body.permissions };
+            if (perms.BOM !== undefined || perms.bom !== undefined) {
+                const bomPerms = Array.from(new Set([
+                    ...(Array.isArray(perms.BOM) ? perms.BOM : []),
+                    ...(Array.isArray(perms.bom) ? perms.bom : [])
+                ]));
+                perms.BOM = bomPerms;
+                perms.bom = bomPerms;
+            }
+            updateData.permissions = perms;
         }
         if (body.name !== undefined) {
             updateData.name = body.name.trim();
