@@ -4,7 +4,20 @@ const ProcessStepSchema = new mongoose.Schema({
     stepId: { type: String, required: true },
     processName: { type: String, required: true }, // e.g., "Cutting", "Polish"
     processType: { type: String, required: true },
+    partyId: { type: String },
     partyName: { type: String },
+    partyGroupFilter: { type: String },
+    givenQty: { type: Number, default: 0 },
+    receivedQty: { type: Number, default: 0 },
+    pendingQty: { type: Number, default: 0 },
+    inventoryUsage: [{
+        inventoryGroupId: String,
+        inventorySubItemId: String,
+        itemCode: String,
+        itemName: String,
+        quantity: Number,
+        deductedAt: Date
+    }],
     activeFields: [{ type: String }], // Array of field keys like ['inputQty', 'cutting', 'rate']
     fields: { type: mongoose.Schema.Types.Mixed }, // Dynamic object storing actual values
     inventoryItemId: { type: Number },

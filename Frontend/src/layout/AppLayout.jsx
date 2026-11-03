@@ -1,13 +1,50 @@
 import { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Menu, X, LayoutDashboard, Shield } from 'lucide-react';
+import { Menu, X, LayoutDashboard, Shield, Download } from 'lucide-react';
 import { useAuth, ACTIONS } from '../context/AuthContext';
 import { ERP_MODULES } from '../config/modules';
 
 export function AppLayout() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const [installPrompt, setInstallPrompt] = useState(null);
+    const [isInstalled, setIsInstalled] = useState(false);
     const location = useLocation();
     const { hasPermission, user, logout, refreshUser } = useAuth();
+
+    // Listen for PWA install prompt
+    useEffect(() => {
+        const handleBeforeInstall = (e) => {
+            e.preventDefault();
+            setInstallPrompt(e);
+        };
+
+        const handleAppInstalled = () => {
+            setIsInstalled(true);
+            setInstallPrompt(null);
+        };
+
+        // Check if already running in standalone mode (installed)
+        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+            setIsInstalled(true);
+        }
+
+        window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+        window.addEventListener('appinstalled', handleAppInstalled);
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+            window.removeEventListener('appinstalled', handleAppInstalled);
+        };
+    }, []);
+
+    const handleInstallClick = async () => {
+        if (!installPrompt) return;
+        installPrompt.prompt();
+        const { outcome } = await installPrompt.userChoice;
+        if (outcome === 'accepted') {
+            setInstallPrompt(null);
+        }
+    };
 
     // Automatically close the mobile sidebar when a navigation item is clicked
     // Also refresh user permissions from DB on route changes to handle live RBAC updates
@@ -48,7 +85,10 @@ export function AppLayout() {
         ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
                 <div className="h-16 flex items-center justify-between px-6 bg-slate-950 text-white font-bold text-xl tracking-wide">
-                    <span>Rudra ERP</span>
+                    <div className="flex items-center gap-2.5">
+                        <img src="/pwa-192x192.png" alt="Rudra ERP" className="w-8 h-8 rounded-lg shadow-sm" />
+                        <span>Rudra ERP</span>
+                    </div>
                     <button
                         onClick={() => setIsMobileOpen(false)}
                         className="md:hidden text-slate-400 hover:text-white p-1 rounded-lg"
@@ -78,6 +118,19 @@ export function AppLayout() {
                         );
                     })}
                 </nav>
+
+                {/* Sidebar PWA Install Widget (if installable and not yet installed) */}
+                {installPrompt && !isInstalled && (
+                    <div className="p-4 border-t border-slate-800">
+                        <button
+                            onClick={handleInstallClick}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
+                        >
+                            <Download className="w-4 h-4" />
+                            Install Rudra App
+                        </button>
+                    </div>
+                )}
             </aside>
 
             {/* Main Content Wrapper */}
@@ -96,8 +149,20 @@ export function AppLayout() {
                         <h1 className="text-lg sm:text-xl font-bold text-slate-800 truncate">{currentTitle}</h1>
                     </div>
 
-                    {/* User Profile & Logout */}
+                    {/* Header Right Actions (Install App + User Profile + Logout) */}
                     <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                        {/* Header Install Button */}
+                        {installPrompt && !isInstalled && (
+                            <button
+                                onClick={handleInstallClick}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                                title="Install App to your device"
+                            >
+                                <Download className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Install App</span>
+                            </button>
+                        )}
+
                         <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-xs sm:text-sm shrink-0">
                             {user?.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'U'}
                         </div>

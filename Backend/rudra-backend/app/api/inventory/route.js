@@ -128,32 +128,42 @@ export async function PATCH(req) {
             }
 
             let targetGroup = null;
-            if (groupId && groupId !== "NEW_GROUP") {
+            if (groupId && groupId !== "NEW_GROUP" && groupId !== "COMMON_STORE") {
                 targetGroup = await InventoryGroup.findById(groupId);
             }
 
-            // If no group exists or user chose to create a new group on the fly
+            // If no group exists or user chose to create without group name
             if (!targetGroup) {
-                const generatedGroupId = await generateNextGroupId();
-                targetGroup = await InventoryGroup.create({
-                    groupId: generatedGroupId,
-                    groupName:
-                        newGroupName?.trim() ||
-                        (item.category === "After-Market"
-                            ? "After-Market Parts"
-                            : "Master Components"),
-                    details: "Auto-created via Quick Add",
-                    subItems: []
+                const defaultGroupName = newGroupName?.trim() || (
+                    item.category === "Packaging"
+                        ? "Common Packaging Materials"
+                        : item.category === "After-Market"
+                        ? "Common Bolt & Fitting Kit"
+                        : "Common Store (General Items)"
+                );
+
+                // Look for an existing group with this name first to prevent duplicate groups
+                targetGroup = await InventoryGroup.findOne({
+                    groupName: { $regex: defaultGroupName, $options: 'i' }
                 });
+
+                if (!targetGroup) {
+                    const generatedGroupId = await generateNextGroupId();
+                    targetGroup = await InventoryGroup.create({
+                        groupId: generatedGroupId,
+                        groupName: defaultGroupName,
+                        details: "Common repository for standard hardware fitting and packing items",
+                        subItems: []
+                    });
+                }
             }
 
+            const isAfterMarketOrPacking = ['After-Market', 'Packaging', 'Finished Good'].includes(item.category);
             targetGroup.subItems.push({
                 itemCode: cleanCode,
                 name: item.name.trim(),
                 category: item.category || "After-Market",
-                inventoryType: item.inventoryType || (
-                    ['After-Market', 'Finished Good'].includes(item.category) ? 'aftermarket' : 'process'
-                ),
+                inventoryType: item.inventoryType || (isAfterMarketOrPacking ? 'aftermarket' : 'process'),
                 uom: item.uom || "Pcs",
                 unitCost: Number(item.unitCost) || 0,
                 stock: Number(item.stock) || 0,
@@ -280,6 +290,74 @@ export async function PATCH(req) {
             );
         }
 
+        // 3B. SYNC PROCESS STORE OUTPUT DIRECTLY TO INVENTORY (Automatic Store)
+        if (action === "sync_process_store") {
+            let auth = await checkPermission("process", ACTIONS.ADD);
+            if (!auth.authorized) auth = await checkPermission("process", ACTIONS.EDIT);
+            if (!auth.authorized) auth = await checkPermission("inventory", ACTIONS.EDIT);
+            if (!auth.authorized) auth = await checkPermission("process", ACTIONS.VIEW);
+            if (!auth.authorized) {
+                return NextResponse.json({ error: auth.error }, { status: auth.status });
+            }
+
+            const { items } = body;
+            if (!Array.isArray(items) || items.length === 0) {
+                return NextResponse.json({ message: "No items to sync", updatedCount: 0 }, { status: 200 });
+            }
+
+            let defaultGroup = await InventoryGroup.findOne({
+                groupName: "Process Inventory"
+            });
+            if (!defaultGroup) {
+                const generatedGroupId = await generateNextGroupId();
+                defaultGroup = await InventoryGroup.create({
+                    groupId: generatedGroupId,
+                    groupName: "Process Inventory",
+                    details: "Factory store for in-process and finished goods",
+                    subItems: []
+                });
+            }
+
+            let updatedCount = 0;
+            for (const item of items) {
+                if (!item.itemCode || Number(item.stock) <= 0) continue;
+                const codeUpper = item.itemCode.trim().toUpperCase();
+
+                const existingGroup = await InventoryGroup.findOne({ "subItems.itemCode": codeUpper });
+                if (existingGroup) {
+                    await InventoryGroup.updateOne(
+                        { "subItems.itemCode": codeUpper },
+                        {
+                            $set: {
+                                "subItems.$.stock": Number(item.stock),
+                                "subItems.$.unitCost": Number(item.unitCost || 0),
+                                "subItems.$.name": item.name || codeUpper,
+                                "subItems.$.category": item.category || "Semi-Finished",
+                                "subItems.$.inventoryType": "process"
+                            }
+                        }
+                    );
+                } else {
+                    defaultGroup.subItems.push({
+                        itemCode: codeUpper,
+                        name: item.name || codeUpper,
+                        category: item.category || "Semi-Finished",
+                        inventoryType: "process",
+                        uom: item.uom || "Pcs",
+                        stock: Number(item.stock),
+                        unitCost: Number(item.unitCost || 0)
+                    });
+                    await defaultGroup.save();
+                }
+                updatedCount++;
+            }
+
+            return NextResponse.json(
+                { message: `Successfully synced ${updatedCount} item(s) to Inventory`, updatedCount },
+                { status: 200 }
+            );
+        }
+
         // 4. RESERVE REJECTED PIECES FOR A PROCESS (Soft-hold — does NOT reduce stock)
         // Used when an operator pulls rejected pieces from inventory into an active order's process
         if (action === "reserve_rejected") {
@@ -399,6 +477,88 @@ export async function PATCH(req) {
 
             return NextResponse.json(
                 { message: "Reserved rejected pieces released back to available stock." },
+                { status: 200 }
+            );
+        }
+
+        // 7. IMMEDIATELY DEDUCT INVENTORY ITEM FOR PROCESS STEP (real-time, not soft-hold)
+        if (action === "deduct_process_item") {
+            let auth = await checkPermission("process", ACTIONS.ADD);
+            if (!auth.authorized) auth = await checkPermission("process", ACTIONS.EDIT);
+            if (!auth.authorized) auth = await checkPermission("inventory", ACTIONS.EDIT);
+            if (!auth.authorized) {
+                return NextResponse.json({ error: auth.error }, { status: auth.status });
+            }
+
+            const { inventorySubItemId, quantity } = body;
+            const deductQty = Number(quantity);
+
+            if (!inventorySubItemId || deductQty <= 0) {
+                return NextResponse.json(
+                    { error: "Valid Inventory Sub Item ID and Quantity required" },
+                    { status: 400 }
+                );
+            }
+
+            await dbConnect();
+            const group = await InventoryGroup.findOne({ "subItems._id": inventorySubItemId });
+            if (!group) {
+                return NextResponse.json({ error: "Inventory item not found" }, { status: 404 });
+            }
+
+            const subItem = group.subItems.id(inventorySubItemId);
+            if (!subItem) {
+                return NextResponse.json({ error: "Sub-item not found" }, { status: 404 });
+            }
+
+            if (deductQty > (subItem.stock || 0)) {
+                return NextResponse.json(
+                    { error: `Only ${subItem.stock || 0} pieces available in stock` },
+                    { status: 400 }
+                );
+            }
+
+            // Immediately deduct stock (no soft-hold)
+            await InventoryGroup.updateOne(
+                { "subItems._id": inventorySubItemId },
+                { $inc: { "subItems.$.stock": -Math.abs(deductQty) } }
+            );
+
+            return NextResponse.json(
+                { message: `Deducted ${deductQty} units of ${subItem.itemCode} from inventory` },
+                { status: 200 }
+            );
+        }
+
+        // 8. RELEASE PROCESS ITEM — Add stock back when item removed from process step
+        if (action === "release_process_item") {
+            let auth = await checkPermission("process", ACTIONS.ADD);
+            if (!auth.authorized) auth = await checkPermission("process", ACTIONS.EDIT);
+            if (!auth.authorized) auth = await checkPermission("inventory", ACTIONS.EDIT);
+            if (!auth.authorized) {
+                return NextResponse.json({ error: auth.error }, { status: auth.status });
+            }
+
+            const { inventorySubItemId, quantity } = body;
+            const releaseQty = Number(quantity);
+
+            if (!inventorySubItemId || releaseQty <= 0) {
+                return NextResponse.json(
+                    { error: "Valid Inventory Sub Item ID and Quantity required" },
+                    { status: 400 }
+                );
+            }
+
+            await dbConnect();
+
+            // Add stock back
+            await InventoryGroup.updateOne(
+                { "subItems._id": inventorySubItemId },
+                { $inc: { "subItems.$.stock": Math.abs(releaseQty) } }
+            );
+
+            return NextResponse.json(
+                { message: `Released ${releaseQty} units back to inventory` },
                 { status: 200 }
             );
         }

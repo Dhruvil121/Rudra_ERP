@@ -230,6 +230,12 @@ export async function POST(req, { params }) {
             processName: String(step.processName || "Process Step").trim(),
             processType: step.processType || "custom",
             partyName: step.partyName || "",
+            partyId: step.partyId || "",
+            partyGroupFilter: step.partyGroupFilter || "",
+            givenQty: Number(step.givenQty ?? step.fields?.givenQty ?? 0),
+            receivedQty: Number(step.receivedQty ?? step.fields?.receivedQty ?? 0),
+            pendingQty: Number(step.fields?.pending ?? step.pendingQty ?? step.fields?.pendingQty ?? 0),
+            inventoryUsage: Array.isArray(step.inventoryUsage) ? step.inventoryUsage : [],
             activeFields: Array.isArray(step.activeFields) ? step.activeFields : [],
             fields: step.fields || {}
         }));

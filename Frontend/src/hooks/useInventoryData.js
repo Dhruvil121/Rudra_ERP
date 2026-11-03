@@ -165,3 +165,42 @@ export const useReleaseRejected = () => {
         }
     });
 };
+
+
+// 7. Immediately deduct inventory item for a process step (real-time)
+export const useDeductProcessItem = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ inventorySubItemId, quantity }) => {
+            const res = await api.patch('/inventory', {
+                action: 'deduct_process_item',
+                inventorySubItemId,
+                quantity
+            });
+            return res.data || res;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard_summary'] });
+        }
+    });
+};
+
+// 8. Release process item — add stock back when removed from process step
+export const useReleaseProcessItem = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ inventorySubItemId, quantity }) => {
+            const res = await api.patch('/inventory', {
+                action: 'release_process_item',
+                inventorySubItemId,
+                quantity
+            });
+            return res.data || res;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['inventory'] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard_summary'] });
+        }
+    });
+};

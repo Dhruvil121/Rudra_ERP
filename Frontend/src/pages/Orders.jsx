@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
     Search, Plus, Edit2, Trash2, ArrowLeft, Check, X, Printer,
-    CheckCircle, Package, Loader2, Factory, Building2, AlertTriangle, Copy, Zap
+    CheckCircle, Package, Loader2, Factory, Building2, AlertTriangle, Copy, Zap, Boxes
 } from 'lucide-react';
 import { PermissionGuard } from '../components/auth/PermissionGuard';
 import { ACTIONS } from '../context/AuthContext';
@@ -336,9 +336,97 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
 
     const inHouseParts = bomData?.inHouseParts || [];
     const afterMarketItems = bomData?.afterMarketItems || [];
+    const packagingItems = bomData?.packagingItems || [];
+    const shortageItems = bomData?.shortageItems || [];
+    const hasShortage = bomData?.hasShortage || false;
+
+    // Live stock audit for active order form
+    const liveStockAudit = useMemo(() => {
+        const materialReqs = {};
+
+        (formData.items || []).forEach(item => {
+            if (!item.rudraCode || !item.qty) return;
+            const bom = boms.find(b => b.finishedItemCode?.toUpperCase() === item.rudraCode?.toUpperCase());
+            if (!bom) return;
+            const orderQty = Number(item.qty) || 0;
+
+            (bom.components || []).forEach(comp => {
+                const name = comp.fieldName || 'Fitting Item';
+                if (!materialReqs[name]) {
+                    materialReqs[name] = { name, reqQty: 0, type: 'Fitting Kit', unit: comp.unit || 'Pcs' };
+                }
+                materialReqs[name].reqQty += (Number(comp.quantity) || 1) * orderQty;
+            });
+
+            (bom.packaging || []).forEach(pack => {
+                const name = pack.fieldName || 'Packaging Item';
+                if (!materialReqs[name]) {
+                    materialReqs[name] = { name, reqQty: 0, type: 'Packaging', unit: pack.unit || 'Pcs' };
+                }
+                materialReqs[name].reqQty += (Number(pack.quantity) || 1) * orderQty;
+            });
+        });
+
+        const shortages = [];
+        Object.values(materialReqs).forEach(mat => {
+            let stock = 0;
+            inventory.forEach(g => {
+                (g.subItems || []).forEach(sub => {
+                    if (sub.name?.toLowerCase() === mat.name?.toLowerCase() || sub.itemCode?.toLowerCase() === mat.name?.toLowerCase()) {
+                        stock += Number(sub.stock || 0);
+                    }
+                });
+            });
+            if (stock < mat.reqQty) {
+                shortages.push({
+                    name: mat.name,
+                    type: mat.type,
+                    unit: mat.unit,
+                    reqQty: mat.reqQty,
+                    stock,
+                    shortfall: mat.reqQty - stock
+                });
+            }
+        });
+
+        return { shortages, hasShortage: shortages.length > 0 };
+    }, [formData.items, boms, inventory]);
 
     return (
         <div className="space-y-4 max-w-6xl mx-auto pb-12">
+            {/* Live BOM Stock Warning in Order Form */}
+            {liveStockAudit.hasShortage && (
+                <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 shadow-sm animate-fade-in">
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-black text-red-800 uppercase tracking-wide">
+                                    ⚠️ LIVE INVENTORY SHORTAGE WARNING FOR THIS ORDER
+                                </span>
+                                <span className="px-2 py-0.5 bg-red-200 text-red-900 rounded font-black text-[10px]">
+                                    {liveStockAudit.shortages.length} Shortages
+                                </span>
+                            </div>
+                            <p className="text-xs text-red-700 font-medium mt-0.5">
+                                Ordered quantities require materials that exceed current inventory stock:
+                            </p>
+                            <div className="mt-2.5 flex flex-wrap gap-2">
+                                {liveStockAudit.shortages.map((sh, idx) => (
+                                    <div key={idx} className="bg-white border border-red-200 px-3 py-1.5 rounded-lg text-xs shadow-xs">
+                                        <span className="font-bold text-slate-800">{sh.name}</span>
+                                        <span className="text-slate-400 text-[10px] ml-1">({sh.type})</span>
+                                        <div className="text-[11px] text-red-700 font-extrabold mt-0.5">
+                                            Short: -{sh.shortfall} {sh.unit} (Stock: {sh.stock} / Req: {sh.reqQty})
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex justify-between items-center bg-white px-4 py-3 rounded-t-md border-b border-slate-200">
                 <div className="flex items-center gap-2 text-sm">
                     <button onClick={() => onNavigate('list')} className="text-slate-400 hover:text-slate-600">
@@ -471,8 +559,44 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                 </div>
             </div>
 
+            {/* INVENTORY SHORTAGE WARNING BANNER */}
+            {hasShortage && (
+                <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 shadow-sm animate-pulse">
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-sm font-black text-red-800 uppercase tracking-wide">
+                                    ⚠️ CRITICAL INVENTORY SHORTAGE ALERT FOR THIS ORDER
+                                </h3>
+                                <span className="px-2 py-0.5 bg-red-200 text-red-900 rounded font-black text-xs">
+                                    {shortageItems.length} Missing Materials
+                                </span>
+                            </div>
+                            <p className="text-xs text-red-700 font-medium mt-1">
+                                This order requires fitting & packaging items that are currently low or out of stock in Inventory:
+                            </p>
+                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {shortageItems.map((sh, idx) => (
+                                    <div key={idx} className="bg-white/90 border border-red-200 rounded-lg p-2.5 flex items-center justify-between text-xs">
+                                        <div>
+                                            <span className="font-bold text-slate-800 block">{sh.materialName}</span>
+                                            <span className="text-[10px] text-slate-500">{sh.type}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-red-700 font-black block">Short: -{sh.shortfall} {sh.unit}</span>
+                                            <span className="text-[10px] text-slate-400">Stock: {sh.availableStock} / Req: {sh.requiredQuantity}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {showBOM && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     <div className="bg-white rounded-sm border border-blue-200 overflow-hidden shadow-sm">
                         <div className="px-4 py-3 border-b border-blue-100 bg-blue-50 flex items-center gap-2">
                             <Factory className="w-4 h-4 text-blue-600" />
@@ -534,7 +658,7 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {afterMarketItems.map((item, idx) => (
-                                            <tr key={idx}>
+                                            <tr key={idx} className={item.shortfall > 0 ? 'bg-red-50/40' : ''}>
                                                 <td className="p-2.5">
                                                     <div className="text-sm font-bold text-slate-800">{item.materialName}</div>
                                                     <div className="text-[11px] text-slate-400">{item.materialCode}</div>
@@ -548,7 +672,7 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                                                 <td className="p-2.5 text-right">
                                                     {item.shortfall > 0 ? (
                                                         <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full">
-                                                            Short: {item.shortfall} {item.unit}
+                                                            Short: {item.shortfall}
                                                         </span>
                                                     ) : (
                                                         <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">
@@ -562,6 +686,68 @@ function OrderDetail({ order, onNavigate, onApprove, isApproving }) {
                                 </table>
                             ) : (
                                 <p className="text-xs text-slate-400 text-center py-4">No After-Market BOM items found.</p>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* 3. PACKAGING REQUIREMENTS (PAKING) */}
+                    <div className="bg-white rounded-sm border border-amber-200 overflow-hidden shadow-sm">
+                        <div className="px-4 py-3 border-b border-amber-100 bg-amber-50 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Boxes className="w-4 h-4 text-amber-600" />
+                                <h2 className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                                    3. Packaging (Paking - Bags, Boxes, Cartons)
+                                </h2>
+                            </div>
+                            {packagingItems.some(p => p.shortfall > 0) && (
+                                <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-black rounded">
+                                    Low Stock
+                                </span>
+                            )}
+                        </div>
+                        <div className="p-4">
+                            {isBomLoading ? (
+                                <div className="flex justify-center p-4"><Loader2 className="w-6 h-6 animate-spin text-amber-600" /></div>
+                            ) : packagingItems.length > 0 ? (
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b text-xs font-semibold text-slate-500">
+                                            <th className="p-2.5">Packaging</th>
+                                            <th className="p-2.5 text-right">Req. Qty</th>
+                                            <th className="p-2.5 text-right">In Stock</th>
+                                            <th className="p-2.5 text-right">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {packagingItems.map((item, idx) => (
+                                            <tr key={idx} className={item.shortfall > 0 ? 'bg-red-50/40' : ''}>
+                                                <td className="p-2.5">
+                                                    <div className="text-sm font-bold text-slate-800">{item.materialName}</div>
+                                                    <div className="text-[11px] text-slate-400">{item.materialCode}</div>
+                                                </td>
+                                                <td className="p-2.5 text-sm font-bold text-amber-700 text-right">
+                                                    {item.requiredQuantity} {item.unit}
+                                                </td>
+                                                <td className="p-2.5 text-sm font-semibold text-slate-600 text-right">
+                                                    {item.availableStock} {item.unit}
+                                                </td>
+                                                <td className="p-2.5 text-right">
+                                                    {item.shortfall > 0 ? (
+                                                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full">
+                                                            Short: {item.shortfall}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full">
+                                                            In Stock
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <p className="text-xs text-slate-400 text-center py-4">No Packaging requirements configured.</p>
                             )}
                         </div>
                     </div>

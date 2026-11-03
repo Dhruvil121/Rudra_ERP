@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
 import {
     Search, Plus, Edit2, Trash2, ArrowLeft, Check, X, FileJson,
-    Loader2, Factory, Package, ArrowRight
+    Loader2, Factory, Package, ArrowRight, Boxes, Sparkles, Layers,
+    DollarSign, AlertCircle
 } from 'lucide-react';
 import { PermissionGuard } from '../components/auth/PermissionGuard';
 import { ACTIONS } from '../context/AuthContext';
@@ -11,6 +12,29 @@ import { useOrders } from '../hooks/useOrderData';
 import { useFeedback } from '../context/FeedbackContext';
 
 const generateRowId = () => Math.random().toString(36).substring(2, 10);
+
+// Presets from User's Excel sheets (Image 2: BOLT & FITTING KITT, Image 4: PAKING)
+const STANDARD_FITTING_KIT_PRESETS = [
+    { fieldName: 'PVC RING WHITE', quantity: 2, rate: 0.42, total: 0.84, unit: 'Pcs' },
+    { fieldName: 'SPRING', quantity: 2, rate: 1.75, total: 3.50, unit: 'Pcs' },
+    { fieldName: 'LOCK CAME', quantity: 2, rate: 2.25, total: 4.50, unit: 'Pcs' },
+    { fieldName: '0.5MM SLIM VOSOR', quantity: 4, rate: 0.60, total: 2.40, unit: 'Pcs' },
+    { fieldName: '15MM SIRCLIP', quantity: 2, rate: 0.95, total: 1.90, unit: 'Pcs' },
+    { fieldName: '8mm SQUARE ROAD (SPINDL)', quantity: 1, rate: 8.00, total: 8.00, unit: 'Pcs' },
+    { fieldName: 'M5 GRUB BOLT', quantity: 10, rate: 0.80, total: 8.00, unit: 'Pcs' },
+    { fieldName: 'MALE-FEMALE', quantity: 4, rate: 4.50, total: 18.00, unit: 'Pcs' },
+    { fieldName: '4*19 SCREW', quantity: 10, rate: 0.17, total: 1.70, unit: 'Pcs' },
+    { fieldName: '2.5mm KEY', quantity: 1, rate: 1.10, total: 1.10, unit: 'Pcs' },
+    { fieldName: 'BEG AND PACKING', quantity: 1, rate: 1.50, total: 1.50, unit: 'Pcs' }
+];
+
+const STANDARD_PACKAGING_PRESETS = [
+    { fieldName: 'CLOTH BAG MORTISH', quantity: 2, rate: 5.50, total: 11.00, unit: 'Pcs' },
+    { fieldName: 'CLOTH BAG ROSE', quantity: 2, rate: 3.00, total: 6.00, unit: 'Pcs' },
+    { fieldName: 'PRINT BOX', quantity: 1, rate: 32.00, total: 32.00, unit: 'Box' },
+    { fieldName: 'CARTUN', quantity: 1, rate: 5.00, total: 5.00, unit: 'Box' },
+    { fieldName: 'BHIDA PATI', quantity: 1, rate: 1.50, total: 1.50, unit: 'Pcs' }
+];
 
 export default function BOMModule() {
     const [view, setView] = useState('list');
@@ -92,7 +116,7 @@ function BOMList({ boms, onNavigate, onDelete }) {
                     <div>
                         <h1 className="text-xl font-bold text-slate-800">Bill of Materials (BOM)</h1>
                         <p className="text-sm text-slate-500">
-                            In-House Factory Parts (Process) & After-Market Requirements (Inventory)
+                            1. In-House Parts (Process) • 2. Bolt & Fitting Kit • 3. Packaging (Paking)
                         </p>
                     </div>
                 </div>
@@ -125,69 +149,86 @@ function BOMList({ boms, onNavigate, onDelete }) {
                         <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
                             <th className="p-4">Rudra Code</th>
                             <th className="p-4">Product Name / Specs</th>
-                            <th className="p-4 text-center">In-House Parts (Process)</th>
-                            <th className="p-4 text-center">After-Market Items (Inventory)</th>
+                            <th className="p-4 text-center">In-House Parts</th>
+                            <th className="p-4 text-center">Fitting Kit (AM)</th>
+                            <th className="p-4 text-center">Packaging (Paking)</th>
+                            <th className="p-4 text-right">Est. Unit Cost</th>
                             <th className="p-4">Version</th>
                             <th className="p-4">Status</th>
                             <th className="p-4 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {filteredBOMs.map((bom) => (
-                            <tr key={bom._id} className="hover:bg-slate-50">
-                                <td className="p-4 font-bold text-indigo-600">{bom.finishedItemCode}</td>
-                                <td className="p-4">
-                                    <div className="text-sm font-semibold text-slate-800">{bom.productName || '-'}</div>
-                                    <div className="text-xs text-slate-400">
-                                        {bom.defaultSize ? `Size: ${bom.defaultSize} ` : ''}
-                                        {bom.defaultFinishing ? `• Finish: ${bom.defaultFinishing}` : ''}
-                                    </div>
-                                </td>
-                                <td className="p-4 text-center">
-                                    <span className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full">
-                                        {bom.inHouseParts?.length || 0} Factory Parts
-                                    </span>
-                                </td>
-                                <td className="p-4 text-center">
-                                    <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full">
-                                        {bom.components?.length || 0} After-Market
-                                    </span>
-                                </td>
-                                <td className="p-4 text-sm text-slate-600">v{bom.version}</td>
-                                <td className="p-4">
-                                    <span
-                                        className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${bom.isActive
-                                            ? 'bg-green-100 text-green-700'
-                                            : 'bg-red-100 text-red-700'
+                        {filteredBOMs.map((bom) => {
+                            const fittingCost = (bom.components || []).reduce((sum, c) => sum + (Number(c.total) || (Number(c.quantity || 1) * Number(c.rate || 0))), 0);
+                            const packingCost = (bom.packaging || []).reduce((sum, p) => sum + (Number(p.total) || (Number(p.quantity || 1) * Number(p.rate || 0))), 0);
+                            const totalCost = fittingCost + packingCost;
+
+                            return (
+                                <tr key={bom._id} className="hover:bg-slate-50">
+                                    <td className="p-4 font-bold text-indigo-600">{bom.finishedItemCode}</td>
+                                    <td className="p-4">
+                                        <div className="text-sm font-semibold text-slate-800">{bom.productName || '-'}</div>
+                                        <div className="text-xs text-slate-400">
+                                            {bom.defaultSize ? `Size: ${bom.defaultSize} ` : ''}
+                                            {bom.defaultFinishing ? `• Finish: ${bom.defaultFinishing}` : ''}
+                                        </div>
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <span className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-full">
+                                            {bom.inHouseParts?.length || 0} Parts
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-full">
+                                            {bom.components?.length || 0} Items
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-full">
+                                            {bom.packaging?.length || 0} Pkg Items
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-right text-sm font-black text-slate-800">
+                                        {totalCost > 0 ? `₹${totalCost.toFixed(2)}` : '-'}
+                                    </td>
+                                    <td className="p-4 text-sm text-slate-600">v{bom.version}</td>
+                                    <td className="p-4">
+                                        <span
+                                            className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${
+                                                bom.isActive
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : 'bg-red-100 text-red-700'
                                             }`}
-                                    >
-                                        {bom.isActive ? 'Active' : 'Inactive'}
-                                    </span>
-                                </td>
-                                <td className="p-4 flex justify-end gap-2">
-                                    <PermissionGuard module="bom" action={ACTIONS.EDIT}>
-                                        <button
-                                            onClick={() => onNavigate('form', bom)}
-                                            className="p-1.5 text-slate-400 hover:text-blue-600"
                                         >
-                                            <Edit2 className="w-4 h-4" />
-                                        </button>
-                                    </PermissionGuard>
-                                    <PermissionGuard module="bom" action={ACTIONS.DELETE}>
-                                        <button
-                                            onClick={() => handleDelete(bom)}
-                                            className="p-1.5 text-slate-400 hover:text-red-600"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </PermissionGuard>
-                                </td>
-                            </tr>
-                        ))}
+                                            {bom.isActive ? 'Active' : 'Inactive'}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 flex justify-end gap-2">
+                                        <PermissionGuard module="bom" action={ACTIONS.EDIT}>
+                                            <button
+                                                onClick={() => onNavigate('form', bom)}
+                                                className="p-1.5 text-slate-400 hover:text-blue-600"
+                                            >
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
+                                        </PermissionGuard>
+                                        <PermissionGuard module="bom" action={ACTIONS.DELETE}>
+                                            <button
+                                                onClick={() => handleDelete(bom)}
+                                                className="p-1.5 text-slate-400 hover:text-red-600"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </PermissionGuard>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                         {filteredBOMs.length === 0 && (
                             <tr>
-                                <td colSpan={7} className="p-12 text-center text-slate-400">
-                                    No BOM recipes found. Click "Create Recipe" to build your first product BOM.
+                                <td colSpan="9" className="p-8 text-center text-slate-400">
+                                    No BOM recipes found matching your search.
                                 </td>
                             </tr>
                         )}
@@ -199,11 +240,11 @@ function BOMList({ boms, onNavigate, onDelete }) {
 }
 
 // ==========================================
-// 2. SPLIT BOM FORM VIEW (Matches Diagram)
+// 2. 3-PART SPLIT BOM FORM (In-House | Fitting Kit | Packaging)
 // ==========================================
 const INITIAL_IN_HOUSE = {
     id: '',
-    fieldName: '', // e.g., "Round Dabi", "Key Hole"
+    fieldName: '',
     partCode: '',
     inventoryGroupId: '',
     inventorySubItemId: '',
@@ -218,6 +259,20 @@ const INITIAL_AFTER_MARKET = {
     inventoryGroupId: '',
     inventorySubItemId: '',
     quantity: 1,
+    rate: 0,
+    total: 0,
+    unit: 'Pcs',
+    remarks: ''
+};
+
+const INITIAL_PACKAGING = {
+    id: '',
+    fieldName: '',
+    inventoryGroupId: '',
+    inventorySubItemId: '',
+    quantity: 1,
+    rate: 0,
+    total: 0,
     unit: 'Pcs',
     remarks: ''
 };
@@ -239,8 +294,20 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                         : [{ ...INITIAL_IN_HOUSE, id: generateRowId() }],
                 components:
                     initialData.components?.length > 0
-                        ? initialData.components
-                        : [{ ...INITIAL_AFTER_MARKET, id: generateRowId() }]
+                        ? initialData.components.map(c => ({
+                              ...c,
+                              rate: c.rate ?? 0,
+                              total: c.total ?? Number(((Number(c.quantity) || 1) * (Number(c.rate) || 0)).toFixed(2))
+                          }))
+                        : [{ ...INITIAL_AFTER_MARKET, id: generateRowId() }],
+                packaging:
+                    initialData.packaging?.length > 0
+                        ? initialData.packaging.map(p => ({
+                              ...p,
+                              rate: p.rate ?? 0,
+                              total: p.total ?? Number(((Number(p.quantity) || 1) * (Number(p.rate) || 0)).toFixed(2))
+                          }))
+                        : [{ ...INITIAL_PACKAGING, id: generateRowId() }]
             };
         }
         return {
@@ -255,15 +322,16 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                 { ...INITIAL_IN_HOUSE, id: generateRowId(), fieldName: 'Round Dabi', qtyInPieces: 1 },
                 { ...INITIAL_IN_HOUSE, id: generateRowId(), fieldName: 'Key Hole', qtyInPieces: 1 }
             ],
-            components: [{ ...INITIAL_AFTER_MARKET, id: generateRowId() }]
+            components: [{ ...INITIAL_AFTER_MARKET, id: generateRowId() }],
+            packaging: [{ ...INITIAL_PACKAGING, id: generateRowId() }]
         };
     });
 
     const [quickModal, setQuickModal] = useState({
         open: false,
-        targetType: 'afterMarket', // 'finishedCode' | 'inHouse' | 'afterMarket'
+        targetType: 'afterMarket', // 'finishedCode' | 'inHouse' | 'afterMarket' | 'packaging'
         rowId: null,
-        groupId: '',
+        groupId: 'COMMON_STORE',
         newGroupName: '',
         itemCode: '',
         name: '',
@@ -283,6 +351,14 @@ function BOMForm({ initialData, onNavigate, onSave }) {
         );
     }, [inventory]);
 
+    const fittingInventoryItems = useMemo(() => {
+        return allSubItems.filter(i => i.category === 'After-Market');
+    }, [allSubItems]);
+
+    const packagingInventoryItems = useMemo(() => {
+        return allSubItems.filter(i => i.category === 'Packaging');
+    }, [allSubItems]);
+
     const finishedCodeSuggestions = useMemo(() => {
         const map = new Map();
         allSubItems
@@ -291,10 +367,13 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                 if (i.itemCode) {
                     map.set(i.itemCode.toUpperCase(), {
                         code: i.itemCode.toUpperCase(),
-                        name: i.name
+                        name: i.name,
+                        size: '',
+                        finishing: ''
                     });
                 }
             });
+
         orders.forEach(o => {
             (o.items || []).forEach(it => {
                 if (it.rudraCode && !map.has(it.rudraCode.toUpperCase())) {
@@ -311,7 +390,7 @@ function BOMForm({ initialData, onNavigate, onSave }) {
         return Array.from(map.values());
     }, [allSubItems, orders]);
 
-    // Left Side Handlers: In-House Factory Parts
+    // Section 1: In-House Factory Parts Handlers
     const handleInHouseChange = (id, field, value) => {
         setFormData(prev => ({
             ...prev,
@@ -336,13 +415,38 @@ function BOMForm({ initialData, onNavigate, onSave }) {
         }));
     };
 
-    // Right Side Handlers: After-Market Requirements
+    // Section 2: Bolt & Fitting Kit Handlers (Auto-syncs with Inventory Items)
     const handleCompChange = (id, field, value) => {
         setFormData(prev => ({
             ...prev,
-            components: prev.components.map(comp =>
-                (comp._id === id || comp.id === id) ? { ...comp, [field]: value } : comp
-            )
+            components: prev.components.map(comp => {
+                if (comp._id !== id && comp.id !== id) return comp;
+                const updated = { ...comp, [field]: value };
+
+                // If user selected or typed an item name, auto-sync rate and unit from Inventory!
+                if (field === 'fieldName' && typeof value === 'string') {
+                    const matched = fittingInventoryItems.find(
+                        it => it.name?.trim().toUpperCase() === value.trim().toUpperCase() ||
+                              it.itemCode?.trim().toUpperCase() === value.trim().toUpperCase()
+                    );
+                    if (matched) {
+                        updated.fieldName = matched.name;
+                        updated.rate = Number(matched.unitCost) || 0;
+                        updated.unit = matched.uom || updated.unit || 'Pcs';
+                        updated.inventorySubItemId = matched._id || matched.id;
+                        updated.inventoryGroupId = matched.groupId;
+                        const q = Number(updated.quantity) || 1;
+                        updated.total = Number((q * (Number(matched.unitCost) || 0)).toFixed(2));
+                    }
+                }
+
+                if (field === 'quantity' || field === 'rate') {
+                    const q = field === 'quantity' ? Number(value) : Number(comp.quantity || 0);
+                    const r = field === 'rate' ? Number(value) : Number(comp.rate || 0);
+                    updated.total = Number((q * r).toFixed(2));
+                }
+                return updated;
+            })
         }));
     };
 
@@ -361,24 +465,106 @@ function BOMForm({ initialData, onNavigate, onSave }) {
         }));
     };
 
+    const loadFittingKitPreset = () => {
+        setFormData(prev => ({
+            ...prev,
+            components: STANDARD_FITTING_KIT_PRESETS.map(p => ({
+                ...INITIAL_AFTER_MARKET,
+                ...p,
+                id: generateRowId()
+            }))
+        }));
+        showToast('Standard Bolt & Fitting Kit Preset loaded (Image 2)!', 'success');
+    };
+
+    // Section 3: Packaging Handlers (Auto-syncs with Inventory Items)
+    const handlePackagingChange = (id, field, value) => {
+        setFormData(prev => ({
+            ...prev,
+            packaging: prev.packaging.map(pack => {
+                if (pack._id !== id && pack.id !== id) return pack;
+                const updated = { ...pack, [field]: value };
+
+                // If user selected or typed a packaging item name, auto-sync rate and unit from Inventory!
+                if (field === 'fieldName' && typeof value === 'string') {
+                    const matched = packagingInventoryItems.find(
+                        it => it.name?.trim().toUpperCase() === value.trim().toUpperCase() ||
+                              it.itemCode?.trim().toUpperCase() === value.trim().toUpperCase()
+                    );
+                    if (matched) {
+                        updated.fieldName = matched.name;
+                        updated.rate = Number(matched.unitCost) || 0;
+                        updated.unit = matched.uom || updated.unit || 'Pcs';
+                        updated.inventorySubItemId = matched._id || matched.id;
+                        updated.inventoryGroupId = matched.groupId;
+                        const q = Number(updated.quantity) || 1;
+                        updated.total = Number((q * (Number(matched.unitCost) || 0)).toFixed(2));
+                    }
+                }
+
+                if (field === 'quantity' || field === 'rate') {
+                    const q = field === 'quantity' ? Number(value) : Number(pack.quantity || 0);
+                    const r = field === 'rate' ? Number(value) : Number(pack.rate || 0);
+                    updated.total = Number((q * r).toFixed(2));
+                }
+                return updated;
+            })
+        }));
+    };
+
+    const addPackagingRow = () => {
+        setFormData(prev => ({
+            ...prev,
+            packaging: [...prev.packaging, { ...INITIAL_PACKAGING, id: generateRowId() }]
+        }));
+    };
+
+    const removePackagingRow = (id) => {
+        if (formData.packaging.length === 1) return;
+        setFormData(prev => ({
+            ...prev,
+            packaging: prev.packaging.filter(p => p._id !== id && p.id !== id)
+        }));
+    };
+
+    const loadPackagingPreset = () => {
+        setFormData(prev => ({
+            ...prev,
+            packaging: STANDARD_PACKAGING_PRESETS.map(p => ({
+                ...INITIAL_PACKAGING,
+                ...p,
+                id: generateRowId()
+            }))
+        }));
+        showToast('Standard Packaging Preset loaded (Image 4)!', 'success');
+    };
+
+    // Quick Add Modal Trigger
     const openQuickAddModal = (targetType, rowId = null, prefillName = '') => {
-        const defaultGroup = inventory[0]?._id || 'NEW_GROUP';
         const defaultCategory =
             targetType === 'finishedCode'
                 ? 'Finished Good'
                 : targetType === 'inHouse'
-                    ? 'Semi-Finished'
-                    : 'After-Market';
+                ? 'Semi-Finished'
+                : targetType === 'packaging'
+                ? 'Packaging'
+                : 'After-Market';
 
         const prefix =
-            targetType === 'finishedCode' ? 'R-' : targetType === 'inHouse' ? 'SF-' : 'AM-';
+            targetType === 'finishedCode'
+                ? 'R-'
+                : targetType === 'inHouse'
+                ? 'SF-'
+                : targetType === 'packaging'
+                ? 'PKG-'
+                : 'AM-';
         const randomNum = Math.floor(100 + Math.random() * 900);
 
         setQuickModal({
             open: true,
             targetType,
             rowId,
-            groupId: defaultGroup,
+            groupId: 'COMMON_STORE',
             newGroupName: '',
             itemCode:
                 prefillName && targetType === 'finishedCode'
@@ -386,7 +572,7 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                     : `${prefix}${randomNum}`,
             name: prefillName || '',
             category: defaultCategory,
-            uom: 'Pcs',
+            uom: targetType === 'packaging' ? 'Pcs' : 'Pcs',
             unitCost: 0,
             stock: 0
         });
@@ -430,9 +616,16 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                 handleCompChange(quickModal.rowId, 'inventorySubItemId', createdSub._id);
                 handleCompChange(quickModal.rowId, 'inventoryGroupId', createdGroup._id);
                 handleCompChange(quickModal.rowId, 'unit', createdSub.uom || 'Pcs');
+                handleCompChange(quickModal.rowId, 'rate', Number(createdSub.unitCost) || 0);
+            } else if (quickModal.targetType === 'packaging' && quickModal.rowId) {
+                handlePackagingChange(quickModal.rowId, 'fieldName', createdSub.name);
+                handlePackagingChange(quickModal.rowId, 'inventorySubItemId', createdSub._id);
+                handlePackagingChange(quickModal.rowId, 'inventoryGroupId', createdGroup._id);
+                handlePackagingChange(quickModal.rowId, 'unit', createdSub.uom || 'Pcs');
+                handlePackagingChange(quickModal.rowId, 'rate', Number(createdSub.unitCost) || 0);
             }
 
-            showToast(`Added "${createdSub.name} (${createdSub.itemCode})" to Inventory!`, 'success');
+            showToast(`Added "${createdSub.name}" to Inventory without group requirement!`, 'success');
             setQuickModal(prev => ({ ...prev, open: false }));
         } catch (err) {
             showToast(err.message || 'Failed to add item to inventory', 'error');
@@ -453,8 +646,12 @@ function BOMForm({ initialData, onNavigate, onSave }) {
             .filter(c => c.inventorySubItemId || (c.fieldName && c.fieldName.trim() !== ''))
             .map(({ id, ...rest }) => rest);
 
-        if (cleanInHouse.length === 0 && cleanComponents.length === 0) {
-            showToast('Please add at least one In-House Part or After-Market Material', 'warning');
+        const cleanPackaging = formData.packaging
+            .filter(p => p.inventorySubItemId || (p.fieldName && p.fieldName.trim() !== ''))
+            .map(({ id, ...rest }) => rest);
+
+        if (cleanInHouse.length === 0 && cleanComponents.length === 0 && cleanPackaging.length === 0) {
+            showToast('Please add at least one In-House Part, Fitting Item, or Packaging Item', 'warning');
             return;
         }
 
@@ -463,17 +660,29 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                 ...formData,
                 finishedItemCode: formData.finishedItemCode.trim().toUpperCase(),
                 inHouseParts: cleanInHouse,
-                components: cleanComponents
+                components: cleanComponents,
+                packaging: cleanPackaging
             });
-            showToast('BOM Recipe saved and synced!', 'success');
+            showToast('BOM Recipe saved and synced with In-House, Fitting & Packaging!', 'success');
             onNavigate('list');
         } catch (error) {
             showToast(error.message || 'Failed to save BOM', 'error');
         }
     };
 
+    // Calculate recipe live cost summaries
+    const totalFittingCost = useMemo(() => {
+        return (formData.components || []).reduce((sum, c) => sum + (Number(c.total) || (Number(c.quantity || 1) * Number(c.rate || 0))), 0);
+    }, [formData.components]);
+
+    const totalPackagingCost = useMemo(() => {
+        return (formData.packaging || []).reduce((sum, p) => sum + (Number(p.total) || (Number(p.quantity || 1) * Number(p.rate || 0))), 0);
+    }, [formData.packaging]);
+
+    const grandRecipeCost = totalFittingCost + totalPackagingCost;
+
     return (
-        <div className="space-y-6 max-w-[1440px] mx-auto pb-16">
+        <div className="space-y-6 max-w-[1550px] mx-auto pb-20">
             {/* Top Bar */}
             <div className="flex justify-between items-center bg-white px-6 py-4 rounded-xl border border-slate-200 sticky top-0 z-20 shadow-sm">
                 <div className="flex items-center gap-2 text-sm">
@@ -481,12 +690,12 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                         <ArrowLeft className="w-5 h-5" />
                     </button>
                     <span className="text-slate-400">Master BOM</span>
-                    <span className="text-slate-300">›</span>
+                    <span className="text-slate-300">»</span>
                     <span className="font-bold text-slate-800 text-base">
                         {isEditing ? `Edit Recipe: ${formData.finishedItemCode}` : 'New Split-BOM Recipe'}
                     </span>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex items-center gap-3">
                     <button
                         onClick={() => onNavigate('list')}
                         className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 text-slate-600 text-sm font-semibold rounded-lg hover:bg-slate-50"
@@ -496,7 +705,7 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                     <PermissionGuard module="bom" action={isEditing ? ACTIONS.EDIT : ACTIONS.ADD}>
                         <button
                             onClick={handleSave}
-                            className="flex items-center gap-1.5 px-5 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 shadow-sm"
+                            className="flex items-center gap-1.5 px-6 py-2.5 bg-indigo-600 text-white text-sm font-black rounded-lg hover:bg-indigo-700 shadow-md transition-all"
                         >
                             <Check className="w-4 h-4" /> Save & Sync Recipe
                         </button>
@@ -504,7 +713,7 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                 </div>
             </div>
 
-            {/* Header: Finished Product Code (Rudra Code) with Smart Suggestion & + Button */}
+            {/* Header: Finished Product Code (Rudra Code) */}
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
                 <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
                     <div className="md:col-span-2">
@@ -518,29 +727,34 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                                 value={formData.finishedItemCode}
                                 onChange={(e) => {
                                     const val = e.target.value.toUpperCase();
-                                    const match = finishedCodeSuggestions.find(s => s.code === val);
-                                    setFormData(p => ({
-                                        ...p,
-                                        finishedItemCode: val,
-                                        productName: match?.name && !p.productName ? match.name : p.productName,
-                                        defaultSize: match?.size && !p.defaultSize ? match.size : p.defaultSize,
-                                        defaultFinishing: match?.finishing && !p.defaultFinishing ? match.finishing : p.defaultFinishing,
-                                        hsnSac: match?.hsnSac && !p.hsnSac ? match.hsnSac : p.hsnSac
-                                    }));
+                                    setFormData(p => ({ ...p, finishedItemCode: val }));
+                                    const match = finishedCodeSuggestions.find(i => i.code === val);
+                                    if (match) {
+                                        setFormData(p => ({
+                                            ...p,
+                                            finishedItemCode: match.code,
+                                            productName: match.name || p.productName,
+                                            defaultSize: match.size || p.defaultSize,
+                                            defaultFinishing: match.finishing || p.defaultFinishing,
+                                            hsnSac: match.hsnSac || p.hsnSac
+                                        }));
+                                    }
                                 }}
-                                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-indigo-500 outline-none font-bold uppercase text-indigo-700"
-                                placeholder="Search or type e.g. R-001"
+                                placeholder="e.g. 9055, R-001"
+                                className="w-full px-3 py-2 text-sm font-bold text-indigo-700 border border-slate-200 rounded-lg focus:border-indigo-500 outline-none uppercase"
                             />
                             <datalist id="finished-code-suggestions">
-                                {finishedCodeSuggestions.map(item => (
-                                    <option key={item.code} value={item.code}>{item.name}</option>
+                                {finishedCodeSuggestions.map(s => (
+                                    <option key={s.code} value={s.code}>
+                                        {s.name}
+                                    </option>
                                 ))}
                             </datalist>
                             <button
                                 type="button"
                                 onClick={() => openQuickAddModal('finishedCode', null, formData.finishedItemCode)}
-                                title="Register New Finished Product in Inventory"
-                                className="px-3 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg font-bold shrink-0"
+                                title="Register New Finished Rudra Code in Inventory"
+                                className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg shrink-0"
                             >
                                 <Plus className="w-4 h-4" />
                             </button>
@@ -555,8 +769,8 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                             type="text"
                             value={formData.productName || ''}
                             onChange={(e) => setFormData(p => ({ ...p, productName: e.target.value }))}
-                            placeholder="e.g. Mortise Handle Set"
-                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-indigo-500 outline-none"
+                            placeholder="e.g. mortise"
+                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-indigo-500 outline-none font-medium"
                         />
                     </div>
 
@@ -568,7 +782,7 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                             type="text"
                             value={formData.defaultSize || ''}
                             onChange={(e) => setFormData(p => ({ ...p, defaultSize: e.target.value }))}
-                            placeholder="e.g. 8 Inch"
+                            placeholder="e.g. 6 Inch"
                             className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-indigo-500 outline-none"
                         />
                     </div>
@@ -593,7 +807,7 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                                 type="text"
                                 value={formData.version}
                                 onChange={(e) => setFormData(p => ({ ...p, version: e.target.value }))}
-                                className="w-full px-2.5 py-2 text-sm border border-slate-200 rounded-lg outline-none"
+                                className="w-full px-2.5 py-2 text-sm border border-slate-200 rounded-lg outline-none font-bold text-center"
                             />
                         </div>
                         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer pt-5">
@@ -607,45 +821,68 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                         </label>
                     </div>
                 </div>
+
+                {/* Live Recipe Cost Strip */}
+                <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-xs">
+                    <div className="flex items-center gap-6">
+                        <div>
+                            <span className="text-slate-400 font-bold block">1. IN-HOUSE PARTS:</span>
+                            <span className="font-extrabold text-blue-700 text-sm">{formData.inHouseParts.length} Parts</span>
+                        </div>
+                        <div>
+                            <span className="text-slate-400 font-bold block">2. FITTING KIT (AM):</span>
+                            <span className="font-extrabold text-emerald-700 text-sm">₹{totalFittingCost.toFixed(2)}</span>
+                        </div>
+                        <div>
+                            <span className="text-slate-400 font-bold block">3. PACKAGING (PAKING):</span>
+                            <span className="font-extrabold text-amber-700 text-sm">₹{totalPackagingCost.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div className="bg-slate-900 text-white px-4 py-2 rounded-xl flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-amber-400" />
+                        <span>ESTIMATED HARDWARE + PACKING COST:</span>
+                        <span className="font-black text-amber-400 text-base">₹{grandRecipeCost.toFixed(2)} / Set</span>
+                    </div>
+                </div>
             </div>
 
-            {/* SPLIT BOM SECTIONS (LEFT: IN-HOUSE -> PROCESS | RIGHT: AFTER-MARKET -> INVENTORY) */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            {/* 3-CARD BOM RECIPE GRID */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
 
-                {/* 1. LEFT PANEL: IN-HOUSE FACTORY PARTS -> PROCESS MODULE */}
-                <div className="bg-white rounded-xl border-2 border-blue-200 overflow-hidden shadow-sm">
+                {/* 1. IN-HOUSE FACTORY PARTS -> PROCESS MODULE */}
+                <div className="bg-white rounded-xl border-2 border-blue-200 overflow-hidden shadow-sm flex flex-col">
                     <div className="px-5 py-4 border-b border-blue-100 bg-blue-50/70 flex justify-between items-center">
                         <div className="flex items-center gap-2.5">
                             <div className="p-2 bg-blue-600 text-white rounded-lg">
                                 <Factory className="w-4 h-4" />
                             </div>
                             <div>
-                                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                                <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
                                     1. In-House Factory Parts
                                 </h2>
-                                <p className="text-xs text-blue-700 font-medium flex items-center gap-1">
-                                    e.g., Round Dabi, Key Hole <ArrowRight className="w-3 h-3" /> Process & Inventory
+                                <p className="text-xs text-blue-700 font-medium">
+                                    Round Dabi, Key Hole → Process Module
                                 </p>
                             </div>
                         </div>
                         <button
                             type="button"
                             onClick={addInHouseRow}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700"
+                            className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 shadow-sm"
                         >
                             <Plus className="w-3.5 h-3.5" /> Add Part
                         </button>
                     </div>
 
-                    <div className="p-4 overflow-x-auto">
+                    <div className="p-3 overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
-                                    <th className="pb-2 pr-2">Field Name (Factory Part)</th>
-                                    <th className="pb-2 px-2 w-28">Qty in Pieces</th>
-                                    <th className="pb-2 px-2 w-24">Wt/Pc (g)</th>
-                                    <th className="pb-2 px-2 w-32">Process Stage</th>
-                                    <th className="pb-2 w-10 text-center">Act</th>
+                                    <th className="pb-2 pr-2">Field Name</th>
+                                    <th className="pb-2 px-1 w-20 text-center">Qty Pcs</th>
+                                    <th className="pb-2 px-1 w-16 text-center">Wt (g)</th>
+                                    <th className="pb-2 px-1 w-24">Process</th>
+                                    <th className="pb-2 w-8 text-center">Act</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -653,96 +890,62 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                                     const rowId = part._id || part.id;
                                     return (
                                         <tr key={rowId} className="hover:bg-slate-50">
-                                            <td className="py-2.5 pr-2">
+                                            <td className="py-2 pr-1">
                                                 <div className="flex gap-1">
                                                     <input
-                                                        list={`inhouse-list-${rowId}`}
                                                         type="text"
                                                         value={part.fieldName}
-                                                        onChange={(e) => {
-                                                            const val = e.target.value;
-                                                            handleInHouseChange(rowId, 'fieldName', val);
-                                                            const match = allSubItems.find(
-                                                                i =>
-                                                                    i.name.toLowerCase() === val.toLowerCase() ||
-                                                                    i.itemCode.toLowerCase() === val.toLowerCase()
-                                                            );
-                                                            if (match) {
-                                                                handleInHouseChange(rowId, 'partCode', match.itemCode);
-                                                                handleInHouseChange(rowId, 'inventorySubItemId', match._id);
-                                                                handleInHouseChange(rowId, 'inventoryGroupId', match.groupId);
-                                                            }
-                                                        }}
-                                                        placeholder="e.g. Round Dabi, Key Hole"
-                                                        className="w-full px-2.5 py-1.5 text-sm font-semibold border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
+                                                        onChange={(e) => handleInHouseChange(rowId, 'fieldName', e.target.value)}
+                                                        placeholder="Part Name"
+                                                        className="w-full px-2 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg focus:border-blue-500 outline-none"
                                                     />
-                                                    <datalist id={`inhouse-list-${rowId}`}>
-                                                        <option value="Round Dabi" />
-                                                        <option value="Key Hole" />
-                                                        <option value="Main Handle Body" />
-                                                        <option value="Back Plate" />
-                                                        <option value="Spindle Rod" />
-                                                        {allSubItems
-                                                            .filter(i => i.category === 'Semi-Finished' || i.category === 'Raw Material')
-                                                            .map(sub => (
-                                                                <option key={sub._id} value={sub.name}>
-                                                                    {sub.itemCode} (Stock: {sub.stock})
-                                                                </option>
-                                                            ))}
-                                                    </datalist>
                                                     <button
                                                         type="button"
                                                         onClick={() => openQuickAddModal('inHouse', rowId, part.fieldName)}
-                                                        title="Create & Sync Part in Inventory"
-                                                        className="px-2 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg shrink-0"
+                                                        title="Sync with Inventory"
+                                                        className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg shrink-0"
                                                     >
-                                                        <Plus className="w-4 h-4" />
+                                                        <Plus className="w-3.5 h-3.5" />
                                                     </button>
                                                 </div>
-                                                {part.partCode && (
-                                                    <span className="text-[10px] text-blue-600 font-bold block mt-0.5">
-                                                        Linked Code: {part.partCode}
-                                                    </span>
-                                                )}
                                             </td>
-                                            <td className="py-2.5 px-2">
+                                            <td className="py-2 px-1">
                                                 <input
                                                     type="number"
                                                     min="1"
-                                                    step="1"
                                                     value={part.qtyInPieces}
                                                     onChange={(e) => handleInHouseChange(rowId, 'qtyInPieces', Number(e.target.value))}
-                                                    className="w-full px-2.5 py-1.5 text-sm font-bold text-blue-700 border border-slate-200 rounded-lg outline-none"
+                                                    className="w-full px-1.5 py-1.5 text-xs font-bold text-blue-700 text-center border border-slate-200 rounded-lg outline-none"
                                                 />
                                             </td>
-                                            <td className="py-2.5 px-2">
+                                            <td className="py-2 px-1">
                                                 <input
                                                     type="number"
                                                     min="0"
                                                     step="0.1"
                                                     value={part.weightPerPcGrams || ''}
                                                     onChange={(e) => handleInHouseChange(rowId, 'weightPerPcGrams', Number(e.target.value))}
-                                                    placeholder="Grams"
-                                                    className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg outline-none"
+                                                    placeholder="g"
+                                                    className="w-full px-1.5 py-1.5 text-xs text-center border border-slate-200 rounded-lg outline-none"
                                                 />
                                             </td>
-                                            <td className="py-2.5 px-2">
+                                            <td className="py-2 px-1">
                                                 <input
                                                     type="text"
                                                     value={part.processName || ''}
                                                     onChange={(e) => handleInHouseChange(rowId, 'processName', e.target.value)}
-                                                    placeholder="e.g. Turning"
-                                                    className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg outline-none"
+                                                    placeholder="Process"
+                                                    className="w-full px-1.5 py-1.5 text-xs border border-slate-200 rounded-lg outline-none"
                                                 />
                                             </td>
-                                            <td className="py-2.5 text-center">
+                                            <td className="py-2 text-center">
                                                 <button
                                                     type="button"
                                                     onClick={() => removeInHouseRow(rowId)}
                                                     disabled={formData.inHouseParts.length === 1}
-                                                    className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-40"
+                                                    className="p-1 text-slate-400 hover:text-red-500 disabled:opacity-30"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
                                             </td>
                                         </tr>
@@ -753,40 +956,50 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                     </div>
                 </div>
 
-                {/* 2. RIGHT PANEL: AFTER-MARKET REQUIREMENTS -> INVENTORY MODULE */}
-                <div className="bg-white rounded-xl border-2 border-emerald-200 overflow-hidden shadow-sm">
+                {/* 2. BOLT & FITTING KIT (AFTER-MARKET REQUIREMENTS - Image 2 Style) */}
+                <div className="bg-white rounded-xl border-2 border-emerald-200 overflow-hidden shadow-sm flex flex-col">
                     <div className="px-5 py-4 border-b border-emerald-100 bg-emerald-50/70 flex justify-between items-center">
                         <div className="flex items-center gap-2.5">
                             <div className="p-2 bg-emerald-600 text-white rounded-lg">
                                 <Package className="w-4 h-4" />
                             </div>
                             <div>
-                                <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-                                    2. After-Market Requirements
+                                <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                                    2. Bolt & Fitting Kit (AM)
                                 </h2>
-                                <p className="text-xs text-emerald-700 font-medium flex items-center gap-1">
-                                    Bought-Out Screws, Springs, Boxes <ArrowRight className="w-3 h-3" /> Inventory Module
+                                <p className="text-xs text-emerald-700 font-medium">
+                                    Screws, Springs, Rods (Image 2)
                                 </p>
                             </div>
                         </div>
-                        <button
-                            type="button"
-                            onClick={addComponentRow}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700"
-                        >
-                            <Plus className="w-3.5 h-3.5" /> Add Material
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={loadFittingKitPreset}
+                                title="Load standard preset items from Image 2"
+                                className="px-2 py-1 bg-white border border-emerald-300 text-emerald-800 text-[11px] font-bold rounded-lg hover:bg-emerald-100"
+                            >
+                                ⚡ Preset
+                            </button>
+                            <button
+                                type="button"
+                                onClick={addComponentRow}
+                                className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 shadow-sm"
+                            >
+                                <Plus className="w-3.5 h-3.5" /> Add
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="p-4 overflow-x-auto">
+                    <div className="p-3 overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
-                                    <th className="pb-2 pr-2">Field Name (Inventory Item)</th>
-                                    <th className="pb-2 px-2 w-24">Quantity</th>
-                                    <th className="pb-2 px-2 w-24">Unit</th>
-                                    <th className="pb-2 px-2">Remarks</th>
-                                    <th className="pb-2 w-10 text-center">Act</th>
+                                    <th className="pb-2 pr-1">Particulars</th>
+                                    <th className="pb-2 px-1 w-14 text-center">Qty</th>
+                                    <th className="pb-2 px-1 w-16 text-right">Rate</th>
+                                    <th className="pb-2 px-1 w-16 text-right">Total</th>
+                                    <th className="pb-2 w-8 text-center">Act</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -794,82 +1007,64 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                                     const rowId = comp._id || comp.id;
                                     return (
                                         <tr key={rowId} className="hover:bg-slate-50">
-                                            <td className="py-2.5 pr-2">
+                                            <td className="py-2 pr-1">
                                                 <div className="flex gap-1">
-                                                    <select
-                                                        value={comp.inventorySubItemId}
-                                                        onChange={(e) => {
-                                                            const selected = allSubItems.find(i => i._id === e.target.value);
-                                                            if (selected) {
-                                                                handleCompChange(rowId, 'inventorySubItemId', selected._id);
-                                                                handleCompChange(rowId, 'inventoryGroupId', selected.groupId);
-                                                                handleCompChange(rowId, 'fieldName', selected.name);
-                                                                handleCompChange(rowId, 'unit', selected.uom || 'Pcs');
-                                                            }
-                                                        }}
-                                                        className="w-full px-2.5 py-1.5 text-sm font-semibold border border-slate-200 rounded-lg outline-none bg-white"
-                                                    >
-                                                        <option value="">Select or click + to add...</option>
-                                                        {inventory.map(group => (
-                                                            <optgroup key={group._id} label={group.groupName}>
-                                                                {group.subItems?.map(sub => (
-                                                                    <option key={sub._id} value={sub._id}>
-                                                                        [{sub.itemCode}] {sub.name} (Stock: {sub.stock} {sub.uom})
-                                                                    </option>
-                                                                ))}
-                                                            </optgroup>
+                                                    <input
+                                                        list={`fitting-datalist-${rowId}`}
+                                                        type="text"
+                                                        value={comp.fieldName}
+                                                        onChange={(e) => handleCompChange(rowId, 'fieldName', e.target.value)}
+                                                        placeholder="e.g. PVC RING, SPRING"
+                                                        className="w-full px-2 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg outline-none uppercase"
+                                                    />
+                                                    <datalist id={`fitting-datalist-${rowId}`}>
+                                                        {fittingInventoryItems.map(fit => (
+                                                            <option key={fit._id || fit.itemCode} value={fit.name}>
+                                                                Rate: ₹{fit.unitCost} • Stock: {fit.stock} {fit.uom}
+                                                            </option>
                                                         ))}
-                                                    </select>
+                                                    </datalist>
                                                     <button
                                                         type="button"
-                                                        onClick={() => openQuickAddModal('afterMarket', rowId, '')}
-                                                        title="Add New After-Market Material to Inventory"
-                                                        className="px-2 py-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg shrink-0"
+                                                        onClick={() => openQuickAddModal('afterMarket', rowId, comp.fieldName)}
+                                                        title="Quick Add to Inventory without group name"
+                                                        className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg shrink-0"
                                                     >
-                                                        <Plus className="w-4 h-4" />
+                                                        <Plus className="w-3.5 h-3.5" />
                                                     </button>
                                                 </div>
                                             </td>
-                                            <td className="py-2.5 px-2">
+                                            <td className="py-2 px-1">
                                                 <input
                                                     type="number"
                                                     step="0.01"
                                                     min="0"
                                                     value={comp.quantity}
                                                     onChange={(e) => handleCompChange(rowId, 'quantity', Number(e.target.value))}
-                                                    className="w-full px-2.5 py-1.5 text-sm font-bold text-emerald-700 border border-slate-200 rounded-lg outline-none"
+                                                    className="w-full px-1 py-1.5 text-xs font-bold text-center border border-slate-200 rounded-lg outline-none"
                                                 />
                                             </td>
-                                            <td className="py-2.5 px-2">
-                                                <select
-                                                    value={comp.unit}
-                                                    onChange={(e) => handleCompChange(rowId, 'unit', e.target.value)}
-                                                    className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg outline-none bg-white"
-                                                >
-                                                    <option value="Pcs">Pcs</option>
-                                                    <option value="Kg">Kg</option>
-                                                    <option value="Set">Set</option>
-                                                    <option value="Box">Box</option>
-                                                    <option value="Mtrs">Mtrs</option>
-                                                </select>
-                                            </td>
-                                            <td className="py-2.5 px-2">
+                                            <td className="py-2 px-1">
                                                 <input
-                                                    type="text"
-                                                    value={comp.remarks || ''}
-                                                    onChange={(e) => handleCompChange(rowId, 'remarks', e.target.value)}
-                                                    placeholder="Optional note"
-                                                    className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg outline-none"
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={comp.rate}
+                                                    onChange={(e) => handleCompChange(rowId, 'rate', Number(e.target.value))}
+                                                    className="w-full px-1 py-1.5 text-xs text-right border border-slate-200 rounded-lg outline-none"
                                                 />
                                             </td>
-                                            <td className="py-2.5 text-center">
+                                            <td className="py-2 px-1 text-right text-xs font-black text-emerald-700">
+                                                ₹{(Number(comp.total) || (Number(comp.quantity || 1) * Number(comp.rate || 0))).toFixed(2)}
+                                            </td>
+                                            <td className="py-2 text-center">
                                                 <button
                                                     type="button"
                                                     onClick={() => removeComponentRow(rowId)}
                                                     disabled={formData.components.length === 1}
-                                                    className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-40"
+                                                    className="p-1 text-slate-400 hover:text-red-500 disabled:opacity-30"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-3.5 h-3.5" />
                                                 </button>
                                             </td>
                                         </tr>
@@ -878,23 +1073,158 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                             </tbody>
                         </table>
                     </div>
+
+                    <div className="px-4 py-2.5 bg-emerald-50 border-t border-emerald-100 flex justify-between items-center text-xs">
+                        <span className="font-bold text-emerald-900">Fitting Kit Sub-Total:</span>
+                        <span className="font-black text-emerald-800 text-sm">₹{totalFittingCost.toFixed(2)}</span>
+                    </div>
                 </div>
+
+                {/* 3. PACKAGING REQUIREMENTS (PAKING - Image 4 Style) */}
+                <div className="bg-white rounded-xl border-2 border-amber-200 overflow-hidden shadow-sm flex flex-col">
+                    <div className="px-5 py-4 border-b border-amber-100 bg-amber-50/70 flex justify-between items-center">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-2 bg-amber-600 text-white rounded-lg">
+                                <Boxes className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                                    3. Packaging (Paking)
+                                </h2>
+                                <p className="text-xs text-amber-700 font-medium">
+                                    Bags, Print Box, Cartun (Image 4)
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={loadPackagingPreset}
+                                title="Load standard preset packaging from Image 4"
+                                className="px-2 py-1 bg-white border border-amber-300 text-amber-800 text-[11px] font-bold rounded-lg hover:bg-amber-100"
+                            >
+                                ⚡ Preset
+                            </button>
+                            <button
+                                type="button"
+                                onClick={addPackagingRow}
+                                className="flex items-center gap-1 px-2.5 py-1 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 shadow-sm"
+                            >
+                                <Plus className="w-3.5 h-3.5" /> Add
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="p-3 overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
+                                    <th className="pb-2 pr-1">Particulars</th>
+                                    <th className="pb-2 px-1 w-14 text-center">Qty</th>
+                                    <th className="pb-2 px-1 w-16 text-right">Rate</th>
+                                    <th className="pb-2 px-1 w-16 text-right">Total</th>
+                                    <th className="pb-2 w-8 text-center">Act</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {formData.packaging.map((pack) => {
+                                    const rowId = pack._id || pack.id;
+                                    return (
+                                        <tr key={rowId} className="hover:bg-slate-50">
+                                            <td className="py-2 pr-1">
+                                                <div className="flex gap-1">
+                                                    <input
+                                                        list={`pack-datalist-${rowId}`}
+                                                        type="text"
+                                                        value={pack.fieldName}
+                                                        onChange={(e) => handlePackagingChange(rowId, 'fieldName', e.target.value)}
+                                                        placeholder="e.g. CLOTH BAG, PRINT BOX"
+                                                        className="w-full px-2 py-1.5 text-xs font-semibold border border-slate-200 rounded-lg outline-none uppercase"
+                                                    />
+                                                    <datalist id={`pack-datalist-${rowId}`}>
+                                                        {packagingInventoryItems.map(pkg => (
+                                                            <option key={pkg._id || pkg.itemCode} value={pkg.name}>
+                                                                Rate: ₹{pkg.unitCost} • Stock: {pkg.stock} {pkg.uom}
+                                                            </option>
+                                                        ))}
+                                                    </datalist>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openQuickAddModal('packaging', rowId, pack.fieldName)}
+                                                        title="Quick Add Packaging Item to Inventory"
+                                                        className="p-1.5 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-lg shrink-0"
+                                                    >
+                                                        <Plus className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                            <td className="py-2 px-1">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={pack.quantity}
+                                                    onChange={(e) => handlePackagingChange(rowId, 'quantity', Number(e.target.value))}
+                                                    className="w-full px-1 py-1.5 text-xs font-bold text-center border border-slate-200 rounded-lg outline-none"
+                                                />
+                                            </td>
+                                            <td className="py-2 px-1">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={pack.rate}
+                                                    onChange={(e) => handlePackagingChange(rowId, 'rate', Number(e.target.value))}
+                                                    className="w-full px-1 py-1.5 text-xs text-right border border-slate-200 rounded-lg outline-none"
+                                                />
+                                            </td>
+                                            <td className="py-2 px-1 text-right text-xs font-black text-amber-700">
+                                                ₹{(Number(pack.total) || (Number(pack.quantity || 1) * Number(pack.rate || 0))).toFixed(2)}
+                                            </td>
+                                            <td className="py-2 text-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removePackagingRow(rowId)}
+                                                    disabled={formData.packaging.length === 1}
+                                                    className="p-1 text-slate-400 hover:text-red-500 disabled:opacity-30"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-100 flex justify-between items-center text-xs">
+                        <span className="font-bold text-amber-900">Packaging Sub-Total:</span>
+                        <span className="font-black text-amber-800 text-sm">₹{totalPackagingCost.toFixed(2)}</span>
+                    </div>
+                </div>
+
             </div>
 
-            {/* QUICK-ADD INVENTORY MODAL (Triggered by any + button) */}
+            {/* QUICK-ADD INVENTORY MODAL (WITHOUT MANDATORY GROUP NAME) */}
             {quickModal.open && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-slate-100">
                         <div className="px-6 py-4 bg-slate-900 text-white flex justify-between items-center">
                             <div>
-                                <h3 className="font-bold text-base">
+                                <h3 className="font-bold text-base flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-amber-400" />
                                     {quickModal.targetType === 'finishedCode'
-                                        ? 'Register New Finished Product (Rudra Code)'
+                                        ? 'Register Finished Product'
+                                        : quickModal.targetType === 'packaging'
+                                        ? 'Add Packaging Item to Inventory'
                                         : quickModal.targetType === 'inHouse'
-                                            ? 'Register In-House Factory Part in Inventory'
-                                            : 'Register After-Market Item in Inventory'}
+                                        ? 'Register Factory Part'
+                                        : 'Add Bolt & Fitting Item to Inventory'}
                                 </h3>
-                                <p className="text-xs text-slate-300">Auto-syncs with Master Inventory</p>
+                                <p className="text-xs text-slate-300">
+                                    Adds directly to Inventory • No group required
+                                </p>
                             </div>
                             <button onClick={() => setQuickModal(p => ({ ...p, open: false }))}>
                                 <X className="w-5 h-5 text-slate-400 hover:text-white" />
@@ -904,32 +1234,35 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                         <div className="p-6 space-y-4">
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                                    Inventory Group
+                                    Inventory Repository / Store
                                 </label>
                                 <select
                                     value={quickModal.groupId}
                                     onChange={(e) => setQuickModal(p => ({ ...p, groupId: e.target.value }))}
-                                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white font-semibold"
+                                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white font-semibold text-slate-800 outline-none"
                                 >
+                                    <option value="COMMON_STORE">
+                                        ⚡ Common Store (Fitting & Packaging) — No Group Needed
+                                    </option>
                                     {inventory.map(g => (
                                         <option key={g._id} value={g._id}>
-                                            {g.groupName} ({g.groupId})
+                                            {g.groupName}
                                         </option>
                                     ))}
-                                    <option value="NEW_GROUP">+ Create New Inventory Group</option>
+                                    <option value="NEW_GROUP">+ Create New Custom Group...</option>
                                 </select>
                             </div>
 
                             {quickModal.groupId === 'NEW_GROUP' && (
                                 <div>
                                     <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                                        New Group Name *
+                                        New Group Name (Optional)
                                     </label>
                                     <input
                                         type="text"
                                         value={quickModal.newGroupName}
                                         onChange={(e) => setQuickModal(p => ({ ...p, newGroupName: e.target.value }))}
-                                        placeholder="e.g. Brass Sub-Parts, After-Market Fasteners"
+                                        placeholder="Leave blank for automatic Common Store"
                                         className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
                                     />
                                 </div>
@@ -938,13 +1271,13 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                                        Unique Code / SKU *
+                                        Item Code / SKU *
                                     </label>
                                     <input
                                         type="text"
                                         value={quickModal.itemCode}
                                         onChange={(e) => setQuickModal(p => ({ ...p, itemCode: e.target.value.toUpperCase() }))}
-                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-bold uppercase"
+                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-bold uppercase text-indigo-700"
                                     />
                                 </div>
                                 <div>
@@ -954,26 +1287,26 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                                     <select
                                         value={quickModal.category}
                                         onChange={(e) => setQuickModal(p => ({ ...p, category: e.target.value }))}
-                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white font-medium"
                                     >
-                                        <option value="Semi-Finished">Semi-Finished (In-House)</option>
-                                        <option value="After-Market">After-Market (Bought-Out)</option>
+                                        <option value="Packaging">Packaging (Paking)</option>
+                                        <option value="After-Market">After-Market (Fitting Kit)</option>
                                         <option value="Raw Material">Raw Material</option>
+                                        <option value="Semi-Finished">Semi-Finished (In-House)</option>
                                         <option value="Finished Good">Finished Good</option>
-                                        <option value="Consumable">Consumable</option>
                                     </select>
                                 </div>
                             </div>
 
                             <div>
                                 <label className="text-xs font-bold text-slate-500 uppercase block mb-1">
-                                    Item / Part Name *
+                                    Item Name / Particulars *
                                 </label>
                                 <input
                                     type="text"
                                     value={quickModal.name}
                                     onChange={(e) => setQuickModal(p => ({ ...p, name: e.target.value }))}
-                                    placeholder="e.g. Round Dabi, Key Hole, Grub Screw 6mm"
+                                    placeholder="e.g. PVC RING, CLOTH BAG MORTISH"
                                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-semibold"
                                 />
                             </div>
@@ -984,21 +1317,22 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                                     <select
                                         value={quickModal.uom}
                                         onChange={(e) => setQuickModal(p => ({ ...p, uom: e.target.value }))}
-                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white font-medium"
                                     >
                                         <option value="Pcs">Pcs</option>
-                                        <option value="Kg">Kg</option>
                                         <option value="Box">Box</option>
                                         <option value="Set">Set</option>
+                                        <option value="Kg">Kg</option>
                                     </select>
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Cost (₹)</label>
                                     <input
                                         type="number"
+                                        step="0.01"
                                         value={quickModal.unitCost}
                                         onChange={(e) => setQuickModal(p => ({ ...p, unitCost: e.target.value }))}
-                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-semibold"
                                     />
                                 </div>
                                 <div>
@@ -1007,7 +1341,7 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                                         type="number"
                                         value={quickModal.stock}
                                         onChange={(e) => setQuickModal(p => ({ ...p, stock: e.target.value }))}
-                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg"
+                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-semibold"
                                     />
                                 </div>
                             </div>
@@ -1024,7 +1358,7 @@ function BOMForm({ initialData, onNavigate, onSave }) {
                                     type="button"
                                     disabled={quickAddItemMutation.isPending}
                                     onClick={handleQuickModalSubmit}
-                                    className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center gap-1.5"
+                                    className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-black hover:bg-indigo-700 flex items-center gap-1.5 shadow-sm"
                                 >
                                     {quickAddItemMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                                     Create & Select
