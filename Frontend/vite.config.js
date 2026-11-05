@@ -58,6 +58,8 @@ export default defineConfig({
     })
   ],
   server: {
+    host: true,
+    allowedHosts: true,
     proxy: {
       // Forward all /api requests to the Next.js backend
       '/api': {
