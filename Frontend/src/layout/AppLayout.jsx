@@ -8,6 +8,7 @@ export function AppLayout() {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [installPrompt, setInstallPrompt] = useState(null);
     const [isInstalled, setIsInstalled] = useState(false);
+    const [showInstallGuide, setShowInstallGuide] = useState(false);
     const location = useLocation();
     const { hasPermission, user, logout, refreshUser } = useAuth();
 
@@ -38,11 +39,16 @@ export function AppLayout() {
     }, []);
 
     const handleInstallClick = async () => {
-        if (!installPrompt) return;
-        installPrompt.prompt();
-        const { outcome } = await installPrompt.userChoice;
-        if (outcome === 'accepted') {
-            setInstallPrompt(null);
+        if (installPrompt) {
+            installPrompt.prompt();
+            const { outcome } = await installPrompt.userChoice;
+            if (outcome === 'accepted') {
+                setInstallPrompt(null);
+                setIsInstalled(true);
+            }
+        } else {
+            // Show intuitive install guide if browser prompt hasn't fired or on iOS
+            setShowInstallGuide(true);
         }
     };
 
@@ -119,8 +125,8 @@ export function AppLayout() {
                     })}
                 </nav>
 
-                {/* Sidebar PWA Install Widget (if installable and not yet installed) */}
-                {installPrompt && !isInstalled && (
+                {/* Sidebar PWA Install Widget (if not yet running in standalone app mode) */}
+                {!isInstalled && (
                     <div className="p-4 border-t border-slate-800">
                         <button
                             onClick={handleInstallClick}
@@ -152,7 +158,7 @@ export function AppLayout() {
                     {/* Header Right Actions (Install App + User Profile + Logout) */}
                     <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                         {/* Header Install Button */}
-                        {installPrompt && !isInstalled && (
+                        {!isInstalled && (
                             <button
                                 onClick={handleInstallClick}
                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg transition-colors cursor-pointer"
@@ -182,6 +188,61 @@ export function AppLayout() {
                 </main>
             </div>
 
+            {/* PWA Install Guidance Modal */}
+            {showInstallGuide && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+                    <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                                    <Download className="w-5 h-5" />
+                                </div>
+                                <h3 className="font-bold text-slate-800 text-base">Install Rudra ERP App</h3>
+                            </div>
+                            <button
+                                onClick={() => setShowInstallGuide(false)}
+                                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="py-4 space-y-4 text-xs sm:text-sm text-slate-600">
+                            <p className="font-medium text-slate-700">
+                                Rudra ERP ko apne device par native app ki tarah install karne ke steps:
+                            </p>
+
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                                <span className="font-bold text-slate-800 block text-xs">📱 Android / Chrome Browser:</span>
+                                <p className="text-xs text-slate-600">
+                                    Browser ke top-right 3 dots (⋮) par tap karein aur <strong className="text-indigo-600">"Install app"</strong> ya <strong className="text-indigo-600">"Add to Home screen"</strong> select karein.
+                                </p>
+                            </div>
+
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                                <span className="font-bold text-slate-800 block text-xs">🍎 iPhone / iPad (Safari):</span>
+                                <p className="text-xs text-slate-600">
+                                    Niche <strong>Share</strong> button (⎋) tap karein aur scroll karke <strong className="text-indigo-600">"Add to Home Screen"</strong> par tap karein.
+                                </p>
+                            </div>
+
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                                <span className="font-bold text-slate-800 block text-xs">💻 PC / Laptop (Chrome / Edge):</span>
+                                <p className="text-xs text-slate-600">
+                                    Browser address bar ke right side me <strong className="text-indigo-600">Install icon (⊕)</strong> par click karein.
+                                </p>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => setShowInstallGuide(false)}
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors"
+                        >
+                            Got It
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

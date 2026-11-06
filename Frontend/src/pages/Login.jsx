@@ -1,15 +1,39 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Lock, Mail, Loader2 } from 'lucide-react';
+import { Lock, Mail, Loader2, Download } from 'lucide-react';
 
 export default function Login() {
     const [email, setEmail] = useState('superadmin@rudra.com');
     const [password, setPassword] = useState('password123');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [installPrompt, setInstallPrompt] = useState(null);
+    const [isInstalled, setIsInstalled] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
+
+    useEffect(() => {
+        const handleBeforeInstall = (e) => {
+            e.preventDefault();
+            setInstallPrompt(e);
+        };
+        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+            setIsInstalled(true);
+        }
+        window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+        return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    }, []);
+
+    const handleInstall = async () => {
+        if (installPrompt) {
+            installPrompt.prompt();
+            const { outcome } = await installPrompt.userChoice;
+            if (outcome === 'accepted') setIsInstalled(true);
+        } else {
+            alert('To install Rudra ERP on your device:\n\n• Mobile: Tap browser menu (⋮) -> "Add to Home screen" or "Install"\n• iPhone: Tap Share (⎋) -> "Add to Home Screen"\n• Desktop: Click install icon (⊕) in browser address bar');
+        }
+    };
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -29,10 +53,23 @@ export default function Login() {
     return (
         <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
             <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-                <div className="text-center mb-8">
+                <div className="text-center mb-6">
                     <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Rudra ERP</h1>
                     <p className="text-slate-500 mt-2">Sign in to your account</p>
                 </div>
+
+                {!isInstalled && (
+                    <div className="mb-6">
+                        <button
+                            type="button"
+                            onClick={handleInstall}
+                            className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all shadow-xs"
+                        >
+                            <Download className="w-4 h-4 text-indigo-600" />
+                            📲 Install Rudra ERP App on this Device
+                        </button>
+                    </div>
+                )}
 
                 {error && (
                     <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm font-medium">
@@ -72,7 +109,7 @@ export default function Login() {
                     <button
                         type="submit"
                         disabled={isLoading}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-70"
+                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-70 cursor-pointer"
                     >
                         {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Sign In'}
                     </button>
